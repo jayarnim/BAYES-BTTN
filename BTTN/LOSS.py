@@ -1,6 +1,5 @@
 import numpy as np
 import torch
-import torch.nn.functional as F
 
 
 def _kl_weibull_gamma(alpha, beta, k, lambda_):

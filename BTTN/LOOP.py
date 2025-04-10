@@ -97,7 +97,7 @@ class Module(nn.Module):
 
         # forward pass of prior
         key_indices = trn_loader.dataset[:][1]
-        key_for_prior = self.model.key(key_indices.to(self.device))
+        key_for_prior = self.model.bttn.key(key_indices.to(self.device))
         prior_shape, prior_scale = self.prior(key_for_prior)
 
         iter_obj = tqdm(
@@ -158,7 +158,7 @@ class Module(nn.Module):
         # forward pass of prior
         with torch.no_grad():
             key_indices = val_loader.dataset[:][1]
-            key_for_prior = self.model.key(key_indices.to(self.device))
+            key_for_prior = self.model.bttn.key(key_indices.to(self.device))
             prior_shape, prior_scale = self.prior(key_for_prior)
 
         iter_obj = tqdm(
