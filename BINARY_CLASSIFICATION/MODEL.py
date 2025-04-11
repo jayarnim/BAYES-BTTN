@@ -12,8 +12,9 @@ class Module(nn.Module):
     def forward(self, Q_idx, K_idx, V_idx):
         context = self.bttn(Q_idx, K_idx, V_idx)
         output = self.mlp(context)
-        logits = self.logit_layer(output)
-        return logits
+        logit = self.logit_layer(output)
+        prob = torch.sigmoid(logit, dim=-1)
+        return prob
 
     def predict(self, Q_idx, K_idx, V_idx, n_samples):
         probs = []

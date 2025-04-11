@@ -59,9 +59,9 @@ def kl_divergence(prior_shape, prior_scale, sampler_shape, sampler_scale, sample
     return kl_loss
 
 
-def binary_nll(logits, target):
+def binary_nll(prob, target):
     nll_loss = F.binary_cross_entropy_with_logits(
-        input=logits, 
+        input=prob, 
         target=target, 
         reduction='mean'
         )
