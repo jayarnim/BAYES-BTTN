@@ -60,4 +60,5 @@ def kl_divergence(prior_shape, prior_scale, sampler_shape, sampler_scale, sample
 
 def gaussian_nll(mu, logvar, target):
     var = torch.exp(logvar)
-    return (0.5 * logvar + (target - mu)**2 / (2 * var)).mean()
+    nll_loss = (0.5 * logvar + (target - mu)**2 / (2 * var)).mean()
+    return nll_loss

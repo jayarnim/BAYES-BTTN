@@ -4,49 +4,39 @@ from . import BTTN
 
 
 class Module(nn.Module):
-    def __init__(self, hidden, dropout, n_query, n_value, n_dim, sampler_type="lognormal"):
+    def __init__(self, hidden, dropout, n_query, n_value, n_dim, n_class, sampler_type="lognormal"):
         super(Module, self).__init__()
         self.bttn = BTTN.Module(n_query, n_value, n_dim, sampler_type)
-        self._layer_generator(n_dim, hidden, dropout)
+        self._layer_generator(n_dim, n_class, hidden, dropout)
 
     def forward(self, Q_idx, K_idx, V_idx):
         context = self.bttn(Q_idx, K_idx, V_idx)
         output = self.mlp(context)
-
-        mu = self.mu_layer(output)
-        logvar = self.logvar_layer(output)
-        logvar = torch.clamp(logvar, min=1e-8)
-
-        return mu, logvar
+        logits = self.logit_layer(output)
+        return logits
 
     def predict(self, Q_idx, K_idx, V_idx, n_samples):
-        preds = []
+        probs_list = []
 
         with torch.no_grad():
             for _ in range(n_samples):
                 context = self.bttn(Q_idx, K_idx, V_idx)
                 output = self.mlp(context)
+                logits = self.logit_layer(output)
+                probs = torch.softmax(logits, dim=-1)
+                probs_list.append(probs)
 
-                mu = self.mu_layer(output)
-                logvar = self.logvar_layer(output)
-                std = torch.exp(0.5 * logvar)
-                eps = torch.randn_like(mu)
-                pred = mu + std * eps
+        # convert list to tensor: (batch_size, num_classes) * n_samples → (n_samples, batch_size, num_classes)
+        probs_tensor = torch.stack(probs_list)
 
-                preds.append(pred)
+        # compute mean: (n_samples, batch_size, num_classes) → (batch_size, num_classes)
+        probs_mean = torch.mean(probs_tensor, dim=0)
 
-        # convert list to tensor: (n_samples, batch_size, 1)
-        preds_tensor = torch.stack(preds, dim=0)
+        return probs_mean
 
-        # compute mean: (batch_size, 1)
-        pred_mean = torch.mean(preds_tensor, dim=0)
-
-        return pred_mean
-
-    def _layer_generator(self, n_dim, hidden, dropout):
+    def _layer_generator(self, n_dim, n_class, hidden, dropout):
         self.mlp = nn.Sequential(*list(self._generate_layers(n_dim, hidden, dropout)))
-        self.mu_layer = nn.Linear(hidden[-1], 1)
-        self.logvar_layer = nn.Linear(hidden[-1], 1)
+        self.logit_layer = nn.Linear(hidden[-1], n_class)
 
     def _generate_layers(self, n_dim, hidden, dropout):
         CONDITION = (hidden[0] == n_dim)

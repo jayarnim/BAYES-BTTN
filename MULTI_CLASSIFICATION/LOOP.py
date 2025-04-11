@@ -3,7 +3,7 @@ import pandas as pd
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from LOSS import gaussian_nll, kl_divergence
+from LOSS import categorical_nll, kl_divergence
 
 
 class Module(nn.Module):
@@ -58,13 +58,14 @@ class Module(nn.Module):
             target_batch = target_batch.to(self.device)
 
             # predict
-            pred_batch = self.model.predict(Q_idx_batch, V_idx_batch, n_samples)
+            probs_batch = self.model.predict(Q_idx_batch, V_idx_batch, n_samples)
+            pred_class_batch = probs_batch.argmax(dim=-1)
 
             # to cpu & save
             Q_idx_list.extend(Q_idx_batch.cpu().tolist())
             V_idx_list.extend(V_idx_batch.cpu().tolist())
             target_list.extend(target_batch.cpu().tolist())
-            pred_list.extend(pred_batch.cpu().tolist())
+            pred_list.extend(pred_class_batch.cpu().tolist())
 
 
         df_true = pd.DataFrame(
@@ -111,7 +112,7 @@ class Module(nn.Module):
             target_batch = target_batch.to(self.device)
 
             # forward pass of model
-            mu_batch, logvar_batch = self.model(
+            logits_batch = self.model(
                 Q_idx=Q_idx_batch, 
                 K_idx=V_idx_batch, 
                 V_idx=V_idx_batch
@@ -123,7 +124,7 @@ class Module(nn.Module):
             sampler_type = self.model.sampler_type
 
             # compute loss
-            batch_nll_loss = gaussian_nll(mu_batch, logvar_batch, target_batch)
+            batch_nll_loss = categorical_nll(logits_batch, target_batch)
             batch_kl_loss = kl_divergence(
                 prior_shape=prior_shape[Q_idx_batch, V_idx_batch], 
                 prior_scale=prior_scale[Q_idx_batch, V_idx_batch], 
@@ -174,7 +175,7 @@ class Module(nn.Module):
                 target_batch = target_batch.to(self.device)
 
                 # forward pass
-                mu_batch, logvar_batch = self.model(
+                logits_batch = self.model(
                     Q_idx=Q_idx_batch, 
                     K_idx=V_idx_batch, 
                     V_idx=V_idx_batch
@@ -186,7 +187,7 @@ class Module(nn.Module):
                 sampler_type = self.model.sampler_type
 
                 # compute loss
-                batch_nll_loss = gaussian_nll(mu_batch, logvar_batch, target_batch)
+                batch_nll_loss = categorical_nll(logits_batch, target_batch)
                 batch_kl_loss = kl_divergence(
                     prior_shape=prior_shape[Q_idx_batch, V_idx_batch], 
                     prior_scale=prior_scale[Q_idx_batch, V_idx_batch], 
