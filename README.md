@@ -1,4 +1,4 @@
-# BAYES-BTTN
+# Bayesian Attention Modules
 
 - Paper : [Bayesian Attention Modules](https://doi.org/10.48550/arXiv.2010.10604)
 
