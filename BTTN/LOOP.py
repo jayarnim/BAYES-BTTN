@@ -96,9 +96,9 @@ class Module(nn.Module):
         epoch_kl_loss = 0.0
 
         # forward pass of prior
-        key_indices = trn_loader.dataset[:][1]
-        key_for_prior = self.model.bttn.key(key_indices.to(self.device))
-        prior_shape, prior_scale = self.prior(key_for_prior)
+        all_k_idx = torch.arange(self.model.bttn.n_key)
+        all_k_embed = self.model.bttn.key(all_k_idx)
+        prior_shape, prior_scale = self.prior(all_k_embed)
 
         iter_obj = tqdm(
             iterable=trn_loader, 
@@ -157,9 +157,9 @@ class Module(nn.Module):
 
         # forward pass of prior
         with torch.no_grad():
-            key_indices = val_loader.dataset[:][1]
-            key_for_prior = self.model.bttn.key(key_indices.to(self.device))
-            prior_shape, prior_scale = self.prior(key_for_prior)
+            all_k_idx = torch.arange(self.model.bttn.n_key)
+            all_k_embed = self.model.bttn.key(all_k_idx)
+            prior_shape, prior_scale = self.prior(all_k_embed)
 
         iter_obj = tqdm(
             iterable=val_loader, 

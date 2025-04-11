@@ -15,9 +15,15 @@ class Module(nn.Module):
         elif sampler_type == "lognormal":
             self.sampler = APPROX.LogNormal(n_query, n_value)
 
+        self.n_query = n_query
+        self.n_key = n_value
+        self.n_value = n_value
+        self.n_dim = n_dim
+
+        # K = V for consistency between prior and posterior
         # self.query = nn.Embedding(n_query, n_dim)
-        self.key = nn.Embedding(n_value, n_dim)
         self.value = nn.Embedding(n_value, n_dim)
+        self.key = self.value
         self.context_norm = nn.LayerNorm(n_dim)
 
     def forward(self, Q_idx, K_idx, V_idx):
