@@ -12,7 +12,7 @@ class Module(nn.Module):
     def forward(self, Q_idx, K_idx, V_idx):
         context = self.bttn(Q_idx, K_idx, V_idx)
         output = self.mlp(context)
-        logits = self.logit_layer(output)
+        logits = self.logit_layer(output).squeeze(-1)
         return logits
 
     def predict(self, Q_idx, K_idx, V_idx, n_samples):
@@ -23,7 +23,7 @@ class Module(nn.Module):
                 context = self.bttn(Q_idx, K_idx, V_idx)
                 output = self.mlp(context)
                 logits = self.logit_layer(output)
-                probs = torch.softmax(logits, dim=-1)
+                probs = torch.softmax(logits, dim=-1).squeeze(-1)
                 probs_list.append(probs)
 
         # convert list to tensor: (batch_size, num_classes) * n_samples → (n_samples, batch_size, num_classes)

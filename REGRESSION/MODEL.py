@@ -13,8 +13,8 @@ class Module(nn.Module):
         context = self.bttn(Q_idx, K_idx, V_idx)
         output = self.mlp(context)
 
-        mu = self.mu_layer(output)
-        logvar = self.logvar_layer(output)
+        mu = self.mu_layer(output).squeeze(-1)
+        logvar = self.logvar_layer(output).squeeze(-1)
         logvar = torch.clamp(logvar, min=1e-8)
 
         return mu, logvar
@@ -27,18 +27,18 @@ class Module(nn.Module):
                 context = self.bttn(Q_idx, K_idx, V_idx)
                 output = self.mlp(context)
 
-                mu = self.mu_layer(output)
-                logvar = self.logvar_layer(output)
+                mu = self.mu_layer(output).squeeze(-1)
+                logvar = self.logvar_layer(output).squeeze(-1)
                 std = torch.exp(0.5 * logvar)
                 eps = torch.randn_like(mu)
                 pred = mu + std * eps
 
                 preds.append(pred)
 
-        # convert list to tensor: (batch_size, 1) * n_samples → (n_samples, batch_size, 1)
+        # convert list to tensor: (batch_size,) * n_samples → (n_samples, batch_size,)
         preds_tensor = torch.stack(preds, dim=0)
 
-        # compute mean: (n_samples, batch_size, 1) → (batch_size, 1)
+        # compute mean: (n_samples, batch_size,) → (batch_size,)
         pred_mean = torch.mean(preds_tensor, dim=0)
 
         return pred_mean

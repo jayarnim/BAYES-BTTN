@@ -27,8 +27,8 @@ class Module(nn.Module):
         self.prior_scale = torch.full((self.n_query, self.n_key), scale)
 
     def forward(self, K_embed):
-        # empirical prior
+        # empirical prior: (n_key, 1)
         prior_shape_vec = self.empirical(K_embed)
-        # (n_key,) → (n_key, n_query) → (n_query, n_key)
+        # (n_key, 1) → (n_key, n_query) → (n_query, n_key)
         prior_shape = prior_shape_vec.repeat(1, self.n_query).T
         return prior_shape, self.prior_scale

@@ -96,6 +96,7 @@ class Module(nn.Module):
         epoch_kl_loss = 0.0
 
         # forward pass of prior
+        self.prior_optimizer.zero_grad()
         all_k_idx = torch.arange(self.model.bttn.n_key)
         all_k_embed = self.model.bttn.key(all_k_idx)
         prior_shape, prior_scale = self.prior(all_k_embed)
@@ -111,6 +112,7 @@ class Module(nn.Module):
             target_batch = target_batch.to(self.device)
 
             # forward pass of model
+            self.model_optimizer.zero_grad()
             mu_batch, logvar_batch = self.model(
                 Q_idx=Q_idx_batch, 
                 K_idx=V_idx_batch, 
@@ -123,7 +125,7 @@ class Module(nn.Module):
             sampler_type = self.model.sampler_type
 
             # compute loss
-            batch_nll_loss = gaussian_nll(mu_batch.squeeze(-1), logvar_batch.squeeze(-1), target_batch)
+            batch_nll_loss = gaussian_nll(mu_batch, logvar_batch, target_batch)
             batch_kl_loss = kl_divergence(
                 prior_shape=prior_shape[Q_idx_batch, V_idx_batch], 
                 prior_scale=prior_scale[Q_idx_batch, V_idx_batch], 
@@ -140,11 +142,9 @@ class Module(nn.Module):
             batch_nll_loss.backward(retain_graph=True)
             batch_kl_loss.backward()
             self.model_optimizer.step()
-            self.model_optimizer.zero_grad()
 
         # backward pass of prior
         self.prior_optimizer.step()
-        self.prior_optimizer.zero_grad()
 
         return epoch_nll_loss/len(trn_loader), epoch_kl_loss/len(trn_loader)
 
@@ -186,7 +186,7 @@ class Module(nn.Module):
                 sampler_type = self.model.sampler_type
 
                 # compute loss
-                batch_nll_loss = gaussian_nll(mu_batch.squeeze(-1), logvar_batch.squeeze(-1), target_batch)
+                batch_nll_loss = gaussian_nll(mu_batch, logvar_batch, target_batch)
                 batch_kl_loss = kl_divergence(
                     prior_shape=prior_shape[Q_idx_batch, V_idx_batch], 
                     prior_scale=prior_scale[Q_idx_batch, V_idx_batch], 

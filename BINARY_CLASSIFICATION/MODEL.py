@@ -13,7 +13,7 @@ class Module(nn.Module):
         context = self.bttn(Q_idx, K_idx, V_idx)
         output = self.mlp(context)
         logit = self.logit_layer(output)
-        prob = torch.sigmoid(logit, dim=-1)
+        prob = torch.sigmoid(logit, dim=-1).squeeze(-1)
         return prob
 
     def predict(self, Q_idx, K_idx, V_idx, n_samples):
@@ -24,13 +24,13 @@ class Module(nn.Module):
                 context = self.bttn(Q_idx, K_idx, V_idx)
                 output = self.mlp(context)
                 logit = self.logit_layer(output)
-                prob = torch.sigmoid(logit, dim=-1)
+                prob = torch.sigmoid(logit, dim=-1).squeeze(-1)
                 probs.append(prob)
 
-        # convert list to tensor: (batch_size, 1) * n_samples → (n_samples, batch_size, 1)
+        # convert list to tensor: (batch_size,) * n_samples → (n_samples, batch_size,)
         probs_tensor = torch.stack(probs)
 
-        # compute mean: (n_samples, batch_size, 1) → (batch_size, 1)
+        # compute mean: (n_samples, batch_size,) → (batch_size,)
         probs_mean = torch.mean(probs_tensor, dim=0)
 
         return probs_mean
