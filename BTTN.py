@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 
-class BayesianAttention(nn.Module):
+class Module(nn.Module):
     def __init__(self, n_dim, sigma_prior=1.0):
         super().__init__()
         self.n_dim = n_dim
@@ -52,15 +52,16 @@ class BayesianAttention(nn.Module):
 
     def _prior(self, K):
         mu_prior = self.mu_prior_layer(K).squeeze(-1)                           # (n_query, n_key)
-        sigma_prior = self.sigma_prior
+        sigma_prior = torch.tensor(self.sigma_prior, device=mu_prior.device)
         mu_prior = mu_prior - (sigma_prior ** 2) / 2                            # lognormal 보정
         return mu_prior, sigma_prior
 
     def _posterior(self, Q, K):
+        # Q 확장
         _, n_key, _ = K.size()
-
-        # Q 확장 및 concat
         Q_expanded = Q.unsqueeze(1).expand(-1, n_key, -1)                       # (n_query, n_key, dim)
+        
+        # Q, K Concat
         QK_cat = torch.cat([Q_expanded, K], dim=-1)                             # (n_query, n_key, 2*dim)
 
         # mu, sigma 계산
