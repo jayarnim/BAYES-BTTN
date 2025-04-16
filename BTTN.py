@@ -24,8 +24,11 @@ class BayesianAttention(nn.Module):
             K: (n_query, n_key, dim)
             V: (n_query, n_key, dim)
         """
+        # Prior
         mu_prior, sigma_prior = self._prior(K)
+        # Posterior
         mu_posterior, sigma_posterior = self._posterior(Q, K)
+        # KL Divergence
         kl = self._kl_divergence(mu_prior, sigma_prior, mu_posterior, sigma_posterior)
         
         # 샘플링: reparameterization trick
@@ -48,10 +51,9 @@ class BayesianAttention(nn.Module):
         return kl
 
     def _prior(self, K):
-        # prior 계산
         mu_prior = self.mu_prior_layer(K).squeeze(-1)                           # (n_query, n_key)
         sigma_prior = self.sigma_prior
-        mu_prior = mu_prior - (sigma_prior ** 2) / 2                            # 보정
+        mu_prior = mu_prior - (sigma_prior ** 2) / 2                            # lognormal 보정
         return mu_prior, sigma_prior
 
     def _posterior(self, Q, K):
