@@ -39,7 +39,7 @@ class Module(nn.Module):
         samples_sharp = samples / self.temp
 
         # 정규화 (simplex)
-        weights = samples / samples.sum(dim=-1, keepdim=True)                       # (n_query, n_key)
+        weights = samples_sharp / samples_sharp.sum(dim=-1, keepdim=True)           # (n_query, n_key)
 
         # attention output
         context = torch.bmm(weights.unsqueeze(1), V).squeeze(1)                     # (n_query, dim)
