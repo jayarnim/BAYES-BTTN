@@ -1,11 +1,13 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 
 class Module(nn.Module):
-    def __init__(self, n_dim, sigma_prior=1.0, temp=1.0):
+    def __init__(self, n_dim, prob_norm='softmax', sigma_prior=1.0, temp=1.0):
         super().__init__()
         self.n_dim = n_dim
+        self.prob_norm = prob_norm
         self.temp = temp
 
         self.mu_posterior_layer = nn.Linear(2 * n_dim, 1)
@@ -35,11 +37,14 @@ class Module(nn.Module):
         
         # 샘플링: reparameterization trick
         eps = torch.randn_like(mu_posterior)                                        # (n_query, n_key)
-        samples = torch.exp(mu_posterior + sigma_posterior * eps)                   # (n_query, n_key)
-        samples_sharp = samples / self.temp
+        samples = torch.exp(mu_posterior + sigma_posterior * eps) / self.temp       # (n_query, n_key)
+        samples = samples / self.temp
 
-        # 정규화 (simplex)
-        weights = samples_sharp / samples_sharp.sum(dim=-1, keepdim=True)           # (n_query, n_key)
+        # 정규화                                                                     # (n_query, n_key)
+        if self.prob_norm=='simplex':
+            weights = samples / samples.sum(dim=-1, keepdim=True)
+        else:
+            weights = F.softmax(samples, dim=-1)
 
         # attention output
         context = torch.bmm(weights.unsqueeze(1), V).squeeze(1)                     # (n_query, dim)
