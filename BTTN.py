@@ -6,20 +6,26 @@ import torch.nn.functional as F
 class Module(nn.Module):
     def __init__(self, n_dim, prob_norm='softmax', sigma_prior=1.0, temp=1.0):
         super().__init__()
+        # device setting
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+        # global attr
         self.n_dim = n_dim
         self.prob_norm = prob_norm
         self.temp = temp
 
+        # posterior layers
         self.mu_posterior_layer = nn.Linear(2 * n_dim, 1)
         self.logvar_posterior_layer = nn.Linear(2 * n_dim, 1)
         self.norm = nn.LayerNorm(n_dim)
 
+        # prior layers
         self.mu_prior_layer = nn.Sequential(
             nn.Linear(n_dim, n_dim),
             nn.ReLU(),
             nn.Linear(n_dim, 1)
         )
-        self.sigma_prior = sigma_prior
+        self.sigma_prior = torch.tensor(sigma_prior).to(self.device)
 
     def forward(self, Q, K, V, mask=None):
         """
@@ -29,11 +35,11 @@ class Module(nn.Module):
             V: (n_query, n_key, dim)
         """
         # Prior
-        mu_prior, sigma_prior = self._prior(K)
+        mu_prior = self._prior(K)
         # Posterior
         mu_posterior, sigma_posterior = self._posterior(Q, K)
         # KL Divergence
-        kl = self._kl_divergence(mu_prior, sigma_prior, mu_posterior, sigma_posterior)
+        kl = self._kl_divergence(mu_prior, mu_posterior, sigma_posterior)
         
         # 샘플링: reparameterization trick
         eps = torch.randn_like(mu_posterior)                                        # (n_query, n_key)
@@ -56,20 +62,16 @@ class Module(nn.Module):
 
         return context, kl
 
-    def _kl_divergence(self, mu_prior, sigma_prior, mu_posterior, sigma_posterior):
-        term_0 = torch.log(sigma_prior / sigma_posterior)
-        term_1 = (sigma_posterior ** 2 + (mu_posterior - mu_prior) ** 2) / (2 * sigma_prior ** 2)
+    def _kl_divergence(self, mu_prior, mu_posterior, sigma_posterior):
+        term_0 = torch.log(self.sigma_prior / sigma_posterior)
+        term_1 = (sigma_posterior ** 2 + (mu_posterior - mu_prior) ** 2) / (2 * self.sigma_prior ** 2)
         kl = (term_0 + term_1 - 0.5).mean()
         return kl
 
     def _prior(self, K):
-        sigma_prior = torch.tensor(
-            self.sigma_prior,
-            device=mu_prior.device
-        )
-        mu_prior = self.mu_prior_layer(K).squeeze(-1)                           # (n_query, n_key)
-        mu_prior = mu_prior - (sigma_prior ** 2) / 2                            # lognormal 보정
-        return mu_prior, sigma_prior
+        mu_prior = self.mu_prior_layer(K).squeeze(-1)                                # (n_query, n_key)
+        mu_prior = mu_prior - (self.sigma_prior ** 2) / 2                            # lognormal 보정
+        return mu_prior
 
     def _posterior(self, Q, K):
         # Q 확장
