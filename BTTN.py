@@ -21,7 +21,7 @@ class Module(nn.Module):
         )
         self.sigma_prior = sigma_prior
 
-    def forward(self, Q, K, V):
+    def forward(self, Q, K, V, mask=None):
         """
         Args:
             Q: (n_query, dim)
@@ -39,6 +39,8 @@ class Module(nn.Module):
         eps = torch.randn_like(mu_posterior)                                        # (n_query, n_key)
         samples = torch.exp(mu_posterior + sigma_posterior * eps) / self.temp       # (n_query, n_key)
         samples = samples / self.temp
+        if mask != None:
+            samples = samples.masked_fill(mask, float('-inf'))
 
         # 정규화                                                                     # (n_query, n_key)
         if self.prob_norm=='simplex':
