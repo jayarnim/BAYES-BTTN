@@ -4,26 +4,26 @@ import torch.nn.functional as F
 
 
 class Module(nn.Module):
-    def __init__(self, n_dim, prob_norm='softmax', sigma_prior=1.0, temp=1.0):
+    def __init__(self, dim, prob_norm='softmax', sigma_prior=1.0, temp=1.0):
         super().__init__()
         # device setting
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
         # global attr
-        self.n_dim = n_dim
+        self.dim = dim
         self.prob_norm = prob_norm
         self.temp = temp
 
         # posterior layers
-        self.mu_posterior_layer = nn.Linear(2 * n_dim, 1)
-        self.logvar_posterior_layer = nn.Linear(2 * n_dim, 1)
-        self.norm = nn.LayerNorm(n_dim)
+        self.mu_posterior_layer = nn.Linear(2 * dim, 1)
+        self.logvar_posterior_layer = nn.Linear(2 * dim, 1)
+        self.norm = nn.LayerNorm(dim)
 
         # prior layers
         self.mu_prior_layer = nn.Sequential(
-            nn.Linear(n_dim, n_dim),
+            nn.Linear(dim, dim),
             nn.ReLU(),
-            nn.Linear(n_dim, 1)
+            nn.Linear(dim, 1)
         )
         self.sigma_prior = sigma_prior
 
@@ -69,7 +69,8 @@ class Module(nn.Module):
             weights = F.softmax(samples, dim=-1)
 
         # attention output
-        context = torch.bmm(weights.unsqueeze(1), V).squeeze(1)                     # (n_query, dim)
+        context = torch.bmm(weights.unsqueeze(1), V)                                # (n_query, 1, dim)
+        context = context.view(-1, self.dim)                                        # (n_query, dim)
         context = self.norm(context)
 
         return context, kl
