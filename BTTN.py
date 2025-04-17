@@ -39,7 +39,9 @@ class Module(nn.Module):
         eps = torch.randn_like(mu_posterior)                                        # (n_query, n_key)
         samples = torch.exp(mu_posterior + sigma_posterior * eps) / self.temp       # (n_query, n_key)
         samples = samples / self.temp
+        
         if mask != None:
+            mask = self._match_mask_dim(mask, samples)
             samples = samples.masked_fill(mask, float('-inf'))
 
         # 정규화                                                                     # (n_query, n_key)
@@ -61,8 +63,11 @@ class Module(nn.Module):
         return kl
 
     def _prior(self, K):
+        sigma_prior = torch.tensor(
+            self.sigma_prior,
+            device=mu_prior.device
+        )
         mu_prior = self.mu_prior_layer(K).squeeze(-1)                           # (n_query, n_key)
-        sigma_prior = torch.tensor(self.sigma_prior, device=mu_prior.device)
         mu_prior = mu_prior - (sigma_prior ** 2) / 2                            # lognormal 보정
         return mu_prior, sigma_prior
 
@@ -74,9 +79,17 @@ class Module(nn.Module):
         # Q, K Concat
         QK_cat = torch.cat([Q_expanded, K], dim=-1)                             # (n_query, n_key, 2*dim)
 
-        # mu, sigma 계산
+        # sigma
+        logvar_posterior = self.logvar_posterior_layer(QK_cat).squeeze(-1)      # (n_query, n_key)
+        sigma_posterior = torch.exp(0.5 * logvar_posterior)                     # logvar -> sigma
+
+        # mu
         mu_posterior = self.mu_posterior_layer(QK_cat).squeeze(-1)              # (n_query, n_key)
-        logvar_posterior = self.logvar_posterior_layer(QK_cat).squeeze(-1)
-        sigma_posterior = torch.exp(0.5 * logvar_posterior)
         mu_posterior = mu_posterior - (sigma_posterior ** 2) / 2                # lognormal 보정
+        
         return mu_posterior, sigma_posterior
+
+    def _match_mask_dim(self, mask, target_tensor):
+        while mask.ndim < target_tensor.ndim:
+            mask = mask.unsqueeze(1)
+        return mask
