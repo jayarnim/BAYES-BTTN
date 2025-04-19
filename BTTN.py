@@ -6,16 +6,13 @@ import torch.nn.functional as F
 class Module(nn.Module):
     def __init__(self, dim, prob_norm='softmax', sigma=0.5, temp=1.0, dropout=0.2):
         super().__init__()
-        # device
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        
-        # global attr
         self.dim = dim
         self.prob_norm = prob_norm
         self.temp = temp
 
         # Prior
-        self.mu_prior_layer = nn.Sequential(
+        self.mlp_prior = nn.Sequential(
             nn.Linear(dim, dim),
             nn.ReLU(),
             nn.Linear(dim, 1)
@@ -23,16 +20,14 @@ class Module(nn.Module):
         self.logvar_prior = torch.log(torch.tensor(sigma))
 
         # Posterior
-        self.mlp = nn.Sequential(
+        self.mlp_posterior = nn.Sequential(
             nn.Linear(dim * 2, dim),
             nn.LayerNorm(dim),
             nn.ReLU(),
             nn.Dropout(dropout),
-            
-            nn.Linear(dim, dim // 2)
         )
-        self.mu_posterior_layer = nn.Linear(dim // 2, 1)
-        self.logvar_posterior_layer = nn.Linear(dim // 2, 1)
+        self.mu_posterior_layer = nn.Linear(dim, 1)
+        self.logvar_posterior_layer = nn.Linear(dim, 1)
 
         # Context Normalization
         self.norm = nn.LayerNorm(dim)
@@ -89,14 +84,14 @@ class Module(nn.Module):
 
     def _prior(self, K):
         sigma_prior = torch.exp(self.logvar_prior)
-        mu_prior = self.mu_prior_layer(K).squeeze(-1)
+        mu_prior = self.mlp_prior(K).squeeze(-1)
         mu_prior = mu_prior - 0.5 * sigma_prior**2
         return mu_prior, sigma_prior
 
     def _posterior(self, Q, K):
         QK_cat = torch.cat([Q, K], dim=-1)
 
-        latent_vector = self.mlp(QK_cat)
+        latent_vector = self.mlp_posterior(QK_cat)
         logvar = self.logvar_posterior_layer(latent_vector).squeeze(-1)
         phi = self.mu_posterior_layer(latent_vector).squeeze(-1)
 
