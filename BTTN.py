@@ -14,8 +14,11 @@ class Module(nn.Module):
         # Prior
         self.mlp_prior = nn.Sequential(
             nn.Linear(dim, dim),
+            nn.LayerNorm(dim),
             nn.ReLU(),
-            nn.Linear(dim, 1)
+            nn.Dropout(dropout),
+
+            nn.Linear(dim, 1),
         )
         self.logvar_prior = torch.log(torch.tensor(sigma))
 
