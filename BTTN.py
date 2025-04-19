@@ -6,34 +6,18 @@ import torch.nn.functional as F
 class Module(nn.Module):
     def __init__(self, dim, prob_norm='softmax', sigma=0.5, temp=1.0, dropout=0.2):
         super().__init__()
+        # device
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        
+        # global attr
         self.dim = dim
         self.prob_norm = prob_norm
+        self.sigma = sigma
         self.temp = temp
+        self.dropout = dropout
 
-        # Prior
-        self.mlp_prior = nn.Sequential(
-            nn.Linear(dim, dim),
-            nn.LayerNorm(dim),
-            nn.ReLU(),
-            nn.Dropout(dropout),
-
-            nn.Linear(dim, 1),
-        )
-        self.logvar_prior = torch.log(torch.tensor(sigma))
-
-        # Posterior
-        self.mlp_posterior = nn.Sequential(
-            nn.Linear(dim * 2, dim),
-            nn.LayerNorm(dim),
-            nn.ReLU(),
-            nn.Dropout(dropout),
-        )
-        self.mu_posterior_layer = nn.Linear(dim, 1)
-        self.logvar_posterior_layer = nn.Linear(dim, 1)
-
-        # Context Normalization
-        self.norm = nn.LayerNorm(dim)
+        # generate layers
+        self._param_layers()
 
     def forward(self, Q, K, V, mask=None):
         if K.dim() == 2 and V.dim() == 2:
@@ -120,3 +104,28 @@ class Module(nn.Module):
         while mask.ndim < target_tensor.ndim:
             mask = mask.unsqueeze(1)
         return mask
+
+    def _param_layers(self):
+        # Prior
+        self.mlp_prior = nn.Sequential(
+            nn.Linear(self.dim, self.dim),
+            nn.LayerNorm(self.dim),
+            nn.ReLU(),
+            nn.Dropout(self.dropout),
+
+            nn.Linear(self.dim, 1),
+        )
+        self.logvar_prior = torch.log(torch.tensor(self.sigma))
+
+        # Posterior
+        self.mlp_posterior = nn.Sequential(
+            nn.Linear(self.dim * 2, self.dim),
+            nn.LayerNorm(self.dim),
+            nn.ReLU(),
+            nn.Dropout(self.dropout),
+        )
+        self.mu_posterior_layer = nn.Linear(self.dim, 1)
+        self.logvar_posterior_layer = nn.Linear(self.dim, 1)
+
+        # Context Normalization
+        self.norm = nn.LayerNorm(self.dim)
