@@ -15,7 +15,6 @@ class Module(nn.Module):
         self.W_q = nn.Linear(dim, dim)
         self.W_k = nn.Linear(dim, dim)
         self.W_v = nn.Linear(dim, dim)
-        self.norm = nn.LayerNorm(dim)
 
         self.mu_prior_layer = nn.Sequential(
             nn.Linear(dim, dim),
@@ -25,7 +24,7 @@ class Module(nn.Module):
 
         # learnable log sigma
         self.log_sigma_prior = torch.log(torch.tensor(sigma))
-        self.log_sigma_posterior = nn.Parameter(torch.log(torch.tensor(sigma)))
+        self.log_sigma_posterior = torch.log(torch.tensor(sigma))
 
     def forward(self, Q, K, V, mask=None):
         Q_proj = self.W_q(Q)  # (n_query, dim)
@@ -39,7 +38,7 @@ class Module(nn.Module):
         else:
             raise ValueError("Invalid K/V dimensions")
 
-        return self.norm(context), kl
+        return context, kl
 
     def _shared_keys(self, Q_proj, K_proj, V_proj, mask):
         mu_prior, sigma_prior = self._prior(K_proj)
@@ -55,7 +54,7 @@ class Module(nn.Module):
 
         weights = self._prob_norm(samples)
         context = torch.matmul(weights, V_proj)
-        return self.norm(context), kl
+        return context, kl
 
     def _per_query_keys(self, Q_proj, K_proj, V_proj, mask):
         Q_exp = Q_proj.unsqueeze(1)
@@ -73,7 +72,7 @@ class Module(nn.Module):
 
         weights = self._prob_norm(samples)
         context = torch.bmm(weights.unsqueeze(1), V_proj).squeeze(1)
-        return self.norm(context), kl
+        return context, kl
 
     def _prob_norm(self, samples):
         if self.prob_norm == 'simplex':
