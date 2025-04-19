@@ -6,7 +6,10 @@ import torch.nn.functional as F
 class Module(nn.Module):
     def __init__(self, dim, prob_norm='softmax', sigma=0.5, temp=1.0, dropout=0.2):
         super().__init__()
+        # device
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        
+        # global attr
         self.dim = dim
         self.prob_norm = prob_norm
         self.temp = temp
