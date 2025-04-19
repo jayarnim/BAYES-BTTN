@@ -109,9 +109,7 @@ class Module(nn.Module):
         # Prior
         self.mlp_prior = nn.Sequential(
             nn.Linear(self.dim, self.dim),
-            nn.LayerNorm(self.dim),
             nn.ReLU(),
-            nn.Dropout(self.dropout),
 
             nn.Linear(self.dim, 1),
         )
@@ -120,9 +118,7 @@ class Module(nn.Module):
         # Posterior
         self.mlp_posterior = nn.Sequential(
             nn.Linear(self.dim * 2, self.dim),
-            nn.LayerNorm(self.dim),
             nn.ReLU(),
-            nn.Dropout(self.dropout),
         )
         self.mu_posterior_layer = nn.Linear(self.dim, 1)
         self.logvar_posterior_layer = nn.Linear(self.dim, 1)
