@@ -1,10 +1,18 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from typing import Literal
 
 
 class Module(nn.Module):
-    def __init__(self, dim, prob_norm='softmax', sigma=0.5, temp=1.0, dropout=0.2):
+    def __init__(
+        self, 
+        dim: int, 
+        prob_norm: Literal['softmax', 'simplex']='softmax', 
+        sigma: float=0.5, 
+        temp: float=1.0, 
+        dropout: float=0.2
+    ):
         super().__init__()
         # device
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
