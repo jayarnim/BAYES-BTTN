@@ -63,7 +63,7 @@ class Module(nn.Module):
 
     def _prior(self, K):
         sigma = torch.exp(0.5 * self.prior_logvar)
-        phi = self.mlp_prior_phi(K).squeeze(-1)
+        phi = self.prior_phi(K).squeeze(-1)
         mu = phi - 0.5 * (sigma**2)
         return mu, sigma
 
@@ -93,7 +93,7 @@ class Module(nn.Module):
 
     def _init_layers(self):
         # Prior
-        self.mlp_prior_phi = nn.Sequential(
+        self.prior_phi = nn.Sequential(
             nn.Linear(self.dim, self.dim),
             nn.LayerNorm(self.dim),
             nn.ReLU(),
