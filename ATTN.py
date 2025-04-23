@@ -20,10 +20,8 @@ class Module(nn.Module):
         self.norm = norm
         self.temp = temp
 
-        # layers
-        self.W_q = nn.Linear(dim, dim)
-        self.W_k = nn.Linear(dim, dim)
-        self.W_v = nn.Linear(dim, dim)
+        # generate layers
+        self._init_layers()
 
     def forward(self, Q, K, V, padding=None, mask=None):
         # (n_query, 1, dim)
@@ -33,7 +31,7 @@ class Module(nn.Module):
         # (n_query, n_key, dim)
         V_proj = self.W_v(V)
 
-        # (n_query, 1, dim) x (n_query, dim, n_key) → (n_query, 1, n_key)
+        # (n_query, 1, dim) x (n_query, dim, n_key) -> (n_query, 1, n_key)
         scores = torch.matmul(Q_proj, K_proj.transpose(-2, -1)) / (self.dim ** 0.5)
         scores = scores / self.temp
         
@@ -46,14 +44,14 @@ class Module(nn.Module):
             scores = scores.masked_fill(padding, float('-inf'))
 
         # (n_query, 1, n_key)
-        weights = self._prob_norm(scores)
+        weights = self._score_normalization(scores)
 
         # (n_query, dim)
         context = torch.matmul(weights, V_proj).squeeze(1)
 
         return context, weights
 
-    def _prob_norm(self, scores):
+    def _score_normalization(self, scores):
         if self.norm == 'simplex':
             weights = scores / (scores.sum(dim=-1, keepdim=True) + 1e-8)
         else:
@@ -64,3 +62,8 @@ class Module(nn.Module):
         while source.ndim < target.ndim:
             source = source.unsqueeze(1)
         return source
+
+    def _init_layers(self):
+        self.W_q = nn.Linear(self.dim, self.dim)
+        self.W_k = nn.Linear(self.dim, self.dim)
+        self.W_v = nn.Linear(self.dim, self.dim)
