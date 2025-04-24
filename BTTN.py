@@ -1,15 +1,16 @@
+from typing import Literal
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from typing import Literal
+from entmax import entmax15
 
 
 class Module(nn.Module):
     def __init__(
         self, 
         dim: int, 
-        sigma: float=0.5, 
-        norm: Literal['softmax', 'simplex']='softmax', 
+        sigma: float=1.0, 
+        norm: Literal['softmax', 'entmax', 'simplex']='softmax', 
         temp: float=1.0, 
         dropout: float=0.2,
     ):
@@ -54,7 +55,7 @@ class Module(nn.Module):
             samples = samples.masked_fill(padding, float('-inf'))
 
         # (n_query, 1, n_key)
-        weights = self._prob_norm(samples)
+        weights = self._score_normalization(samples)
 
         # (n_query, dim)
         context = torch.bmm(weights.unsqueeze(1), V).squeeze(1)
@@ -82,6 +83,8 @@ class Module(nn.Module):
     def _score_normalization(self, samples):
         if self.norm == 'simplex':
             weights = samples / (samples.sum(dim=-1, keepdim=True) + 1e-8)
+        elif self.norm == 'entmax':
+            weights = entmax15(samples, dim=-1)
         else:
             weights = F.softmax(samples, dim=-1)
         return weights
