@@ -1,14 +1,15 @@
+from typing import Literal
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from typing import Literal
+from entmax import entmax15
 
 
 class Module(nn.Module):
     def __init__(
         self,
         dim: int,
-        norm: Literal['softmax', 'simplex']='softmax', 
+        norm: Literal['softmax', 'entmax', 'simplex']='softmax', 
         temp: float=1.0,
     ):
         super().__init__()
@@ -32,8 +33,9 @@ class Module(nn.Module):
         V_proj = self.W_v(V)
 
         # (n_query, 1, dim) x (n_query, dim, n_key) -> (n_query, 1, n_key)
-        scores = torch.matmul(Q_proj, K_proj.transpose(-2, -1)) / (self.dim ** 0.5)
-        scores = scores / self.temp
+        scores = (
+            torch.matmul(Q_proj, K_proj.transpose(-2, -1)) / (self.dim ** 0.5)
+        ) / self.temp
         
         if mask is not None:
             mask = self._match_dim(mask, scores)
@@ -54,6 +56,8 @@ class Module(nn.Module):
     def _score_normalization(self, scores):
         if self.norm == 'simplex':
             weights = scores / (scores.sum(dim=-1, keepdim=True) + 1e-8)
+        elif self.norm == 'entmax':
+            weights = entmax15(scores, dim=-1)
         else:
             weights = F.softmax(scores, dim=-1)
         return weights
