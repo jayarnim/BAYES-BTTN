@@ -32,7 +32,7 @@ class Module(nn.Module):
         # (n_query, n_key, dim)
         V_proj = self.W_v(V)
 
-        prior_mu, prior_sigma = self._prior()
+        prior_mu, prior_sigma = self._prior(K_proj)
         posterior_mu, posterior_sigma = self._posterior(Q_proj, K_proj)
         
         params = dict(
