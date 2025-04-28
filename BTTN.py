@@ -58,7 +58,7 @@ class Module(nn.Module):
         self.weights = self._score_norm_fn(samples)
 
         # (n_query, dim)
-        context = torch.bmm(self.weights.unsqueeze(1), V_proj).squeeze(1)
+        context = torch.bmm(self.weights, V_proj).squeeze(1)
 
         # pre-norm & residual connection
         context = self.layer_norm(context)
