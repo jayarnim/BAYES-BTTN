@@ -9,10 +9,8 @@ class Module(nn.Module):
     def __init__(
         self, 
         dim: int, 
-        sigma: float=1.0, 
-        norm: Literal['softmax', 'entmax', 'simplex']='softmax', 
-        temp: float=1.0, 
-        dropout: float=0.2,
+        sigma: float=0.1, 
+        norm: Literal['simplex', 'softmax', 'entmax']='simplex', 
     ):
         super().__init__()
         # device
@@ -20,20 +18,22 @@ class Module(nn.Module):
         
         # global attr
         self.dim = dim
-        self.norm = norm
         self.sigma = sigma
-        self.temp = temp
-        self.dropout = dropout
+        self.norm = norm
 
         # generate layers
         self._init_layers()
 
     def forward(self, Q, K, V, padding=None, mask=None):
         # (n_query, 1, dim)
-        Q_exp = Q.unsqueeze(1)
+        Q_proj = self.W_q(Q).unsqueeze(1)
+        # (n_query, n_key, dim)
+        K_proj = self.W_k(K)
+        # (n_query, n_key, dim)
+        V_proj = self.W_v(V)
 
-        prior_mu, prior_sigma = self._prior(K)
-        posterior_mu, posterior_sigma = self._posterior(Q_exp.expand_as(K), K)
+        prior_mu, prior_sigma = self._prior()
+        posterior_mu, posterior_sigma = self._posterior(Q_proj, K_proj)
         
         params = dict(
             prior_mu=prior_mu, 
@@ -44,7 +44,7 @@ class Module(nn.Module):
         )
 
         eps = torch.randn_like(posterior_mu)
-        samples = torch.exp(posterior_mu + posterior_sigma * eps) / self.temp
+        samples = torch.exp(posterior_mu + posterior_sigma * eps)
 
         if mask is not None:
             mask = self._match_dim(mask, samples)
@@ -54,39 +54,48 @@ class Module(nn.Module):
             padding = self._match_dim(padding, samples)
             samples = samples.masked_fill(padding, float('-inf'))
 
-        # (n_query, 1, n_key)
-        weights = self._score_normalization(samples)
+        # (n_query, n_key)
+        self.weights = self._score_norm_fn(samples)
 
         # (n_query, dim)
-        context = torch.bmm(weights.unsqueeze(1), V).squeeze(1)
+        context = torch.bmm(self.weights.unsqueeze(1), V_proj).squeeze(1)
 
-        return context, weights, params
+        # pre-norm & residual connection
+        context = self.layer_norm(context)
+        context += Q_proj.squeeze(1)
+
+        return context, self.weights, params
 
     def _prior(self, K):
-        sigma = torch.exp(0.5 * self.prior_logvar)
+        logvar = self.prior_logvar
+        sigma = torch.exp(0.5 * logvar)
+
         phi = self.prior_phi(K).squeeze(-1)
         mu = phi - 0.5 * (sigma**2)
+        
         return mu, sigma
 
     def _posterior(self, Q, K):
-        x_product = Q * K
-        latent = self.posterior_layers(x_product)
-
-        logvar = self.posterior_logvar(latent).squeeze(-1)
+        logvar = self.posterior_logvar
         sigma = torch.exp(0.5 * logvar)
         
-        phi = self.posterior_phi(latent).squeeze(-1)
+        phi = torch.matmul(Q, K.transpose(-2, -1)) / (self.dim ** 0.5)
         mu = phi - 0.5 * sigma**2
 
         return mu, sigma
 
-    def _score_normalization(self, samples):
+    def _score_norm_fn(self, samples):
+        samples = F.softplus(samples)
+
         if self.norm == 'simplex':
-            weights = samples / (samples.sum(dim=-1, keepdim=True) + 1e-8)
+            weights = samples / samples.sum(dim=-1, keepdim=True)
+        elif self.norm == 'softmax':
+            weights = F.softmax(samples, dim=-1)
         elif self.norm == 'entmax':
             weights = entmax15(samples, dim=-1)
         else:
-            weights = F.softmax(samples, dim=-1)
+            raise ValueError("score normalization fn must be simplex, entmax or softmax")
+
         return weights
 
     def _match_dim(self, source, target):
@@ -95,31 +104,22 @@ class Module(nn.Module):
         return source
 
     def _init_layers(self):
+        # projection
+        self.W_q = nn.Linear(self.dim, self.dim)
+        self.W_k = nn.Linear(self.dim, self.dim)
+        self.W_v = nn.Linear(self.dim, self.dim)
+
         # Prior
         self.prior_phi = nn.Sequential(
             nn.Linear(self.dim, self.dim),
-            nn.LayerNorm(self.dim),
             nn.ReLU(),
-            nn.Dropout(self.dropout),
 
             nn.Linear(self.dim, 1),
         )
         self.prior_logvar = 2 * torch.log(torch.tensor(self.sigma))
 
         # Posterior
-        self.posterior_layers = nn.Sequential(
-            nn.Linear(self.dim, self.dim),
-            nn.LayerNorm(self.dim),
-            nn.ReLU(),
-            nn.Dropout(self.dropout),
-        )
-        self.posterior_phi = nn.Linear(
-            in_features=self.dim,
-            out_features=1,
-            # bias=False,
-        )
-        self.posterior_logvar = nn.Linear(
-            in_features=self.dim,
-            out_features=1,
-            # bias=False,
-        )
+        self.posterior_logvar = 2 * torch.log(torch.tensor(self.sigma))
+
+        # normalization
+        self.layer_norm = nn.LayerNorm(self.dim)
