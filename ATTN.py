@@ -2,65 +2,86 @@ from typing import Literal
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from entmax import entmax15
 
 
 class Module(nn.Module):
     def __init__(
         self,
         dim: int,
-        norm: Literal['softmax', 'entmax', 'simplex']='softmax', 
-        temp: float=1.0,
+        n_heads: int, 
+        simplex_type: Literal['linear', 'exp']='linear',
+        sigma: float=0.25, 
+        tau: float=2.0, 
+        beta: float=0.25,
+        dropout: float=0.2,
     ):
         super().__init__()
-        # device setting
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        assert dim % n_heads == 0, "dim must be divisible by n_heads"
 
-        # global attr
         self.dim = dim
-        self.norm = norm
-        self.temp = temp
+        self.n_heads = n_heads
+        self.head_dim = dim // n_heads
+        self.simplex_type = simplex_type
+        self.sigma = sigma
+        self.tau = tau
+        self.beta = beta
+        self.dropout = dropout
 
-        # generate layers
         self._init_layers()
 
     def forward(self, Q, K, V, padding=None, mask=None):
-        # (n_query, 1, dim)
-        Q_proj = self.W_q(Q).unsqueeze(1)
-        # (n_query, n_key, dim)
-        K_proj = self.W_k(K)
-        # (n_query, n_key, dim)
-        V_proj = self.W_v(V)
+        # Projection
+        Q_proj = self.W_q(Q).view(Q.size(0), self.n_heads, self.head_dim).unsqueeze(2)  # (n_query, n_heads, 1, head_dim)
+        K_proj = self.W_k(K).view(K.size(0), K.size(1), self.n_heads, self.head_dim).transpose(1, 2)  # (n_query, n_heads, n_key, head_dim)
+        V_proj = self.W_v(V).view(V.size(0), V.size(1), self.n_heads, self.head_dim).transpose(1, 2)  # (n_query, n_heads, n_key, head_dim)
 
-        # (n_query, 1, dim) x (n_query, dim, n_key) -> (n_query, 1, n_key)
-        scores = (
-            torch.matmul(Q_proj, K_proj.transpose(-2, -1)) / (self.dim ** 0.5)
-        ) / self.temp
-        
-        if mask is not None:
-            mask = self._match_dim(mask, scores)
-            scores = scores.masked_fill(mask, float('-inf'))
+        # Sampling attn score
+        scores = self._scale_dot_product(Q_proj, K_proj, padding)
 
+        # Masking
         if padding is not None:
-            padding = self._match_dim(padding, scores)
-            scores = scores.masked_fill(padding, float('-inf'))
+            scores = torch.masked_fill(scores, self._match_dim(padding, scores), float('-inf'))
 
-        # (n_query, 1, n_key)
-        weights = self._score_normalization(scores)
+        if mask is not None:
+            scores = torch.masked_fill(scores, self._match_dim(mask, scores), float('-inf'))
 
-        # (n_query, dim)
-        context = torch.matmul(weights, V_proj).squeeze(1)
+        # Compute context vector for each head
+        weights = self._simplex_projection_fn(scores)  # (n_query, n_heads, n_key)
+        head_contexts = torch.einsum('bhk,bhkd->bhd', weights, V_proj)  # (n_query, n_heads, head_dim)
 
-        return context, weights
+        # Concat and linear projection
+        flat_contexts = head_contexts.reshape(Q.size(0), self.dim)  # (n_query, dim)
+        fusion_context = self.W_o(flat_contexts)
 
-    def _score_normalization(self, scores):
-        if self.norm == 'simplex':
-            weights = scores / (scores.sum(dim=-1, keepdim=True) + 1e-8)
-        elif self.norm == 'entmax':
-            weights = entmax15(scores, dim=-1)
+        # Pre-normalization
+        fusion_context = self.layer_norm(fusion_context)
+        fusion_context += Q
+
+        return fusion_context
+
+    def _scale_dot_product(self, Q, K, padding):
+        scores = (Q.expand_as(K) * K).sum(dim=-1) / (self.head_dim ** 0.5)
+        return scores
+
+    def _simplex_projection_fn(self, scores):
+        if self.simplex_type == "linear":
+            return self._smoothed_linear_projection_fn(scores)
+        elif self.simplex_type == "exp":
+            return self._smoothed_exp_projection_fn(scores)
         else:
-            weights = F.softmax(scores, dim=-1)
-        return weights
+            raise ValueError("simplex type must be linear or exp")
+
+    def _smoothed_linear_projection_fn(self, scores):
+        numerator = F.relu(scores) ** self.tau
+        numerator_sum = numerator.sum(dim=-1, keepdim=True) + 1e-8
+        denominator = numerator_sum ** self.beta
+        return numerator / denominator
+
+    def _smoothed_exp_projection_fn(self, scores):
+        numerator = torch.exp(scores / self.tau)
+        numerator_sum = numerator.sum(dim=-1, keepdim=True)
+        denominator = numerator_sum ** self.beta
+        return numerator / denominator
 
     def _match_dim(self, source, target):
         while source.ndim < target.ndim:
@@ -71,3 +92,5 @@ class Module(nn.Module):
         self.W_q = nn.Linear(self.dim, self.dim)
         self.W_k = nn.Linear(self.dim, self.dim)
         self.W_v = nn.Linear(self.dim, self.dim)
+        self.W_o = nn.Linear(self.dim, self.dim)
+        self.layer_norm = nn.LayerNorm(self.dim)
