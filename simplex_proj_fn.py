@@ -6,7 +6,7 @@ import torch.nn.functional as F
 class Module(nn.Module):
     def __init__(
         self,
-        tau: float=2.0, 
+        tau: float=3.0, 
         beta: float=0.25,
         simplex_type: Literal['linear', 'exp']='linear',
     ):
