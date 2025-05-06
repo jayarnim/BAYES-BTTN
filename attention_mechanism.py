@@ -1,4 +1,4 @@
-from typing import Literal
+from typing import Literal, Optional
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -39,8 +39,8 @@ class Module(nn.Module):
         Q: torch.Tensor, 
         K: torch.Tensor, 
         V: torch.Tensor, 
-        padding: torch.Tensor=None, 
-        mask: torch.Tensor=None, 
+        padding: Optional[torch.Tensor]=None, 
+        mask: Optional[torch.Tensor]=None, 
         layernorm: bool=False, 
         residual: bool=False,
     ):
