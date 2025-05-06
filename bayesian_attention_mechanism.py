@@ -2,7 +2,7 @@ from typing import Literal
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from .ATTNScoreFN import Module as attn_score_fn
+from .attn_score_fn import Module as ATTNScoreFN
 
 
 class Module(nn.Module):
@@ -30,7 +30,7 @@ class Module(nn.Module):
         self.beta = beta
         self.dropout = dropout
 
-        self.attn_score_fn = attn_score_fn(dim, n_heads, fn_type)
+        self.attn_score_fn = ATTNScoreFN(dim, n_heads, fn_type)
 
         self._init_layers()
 
