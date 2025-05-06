@@ -34,7 +34,7 @@ class Module(nn.Module):
 
         self._init_layers()
 
-    def forward(self, Q, K, V, padding=None, mask=None):
+    def forward(self, Q, K, V, padding=None, mask=None, layernorm=False, residual=False):
         # Projection
         Q_proj = self.W_q(Q).view(Q.size(0), self.n_heads, self.head_dim).unsqueeze(2)  # (n_query, n_heads, 1, head_dim)
         K_proj = self.W_k(K).view(K.size(0), K.size(1), self.n_heads, self.head_dim).transpose(1, 2)  # (n_query, n_heads, n_key, head_dim)
@@ -46,7 +46,6 @@ class Module(nn.Module):
         # Masking
         if padding is not None:
             scores = torch.masked_fill(scores, self._match_dim(padding, scores), float('-inf'))
-
         if mask is not None:
             scores = torch.masked_fill(scores, self._match_dim(mask, scores), float('-inf'))
 
@@ -56,13 +55,20 @@ class Module(nn.Module):
         # Compute context vector for each head
         head_contexts = torch.einsum('bhk,bhkd->bhd', weights, V_proj)  # (n_query, n_heads, head_dim)
 
-        # Concat and linear projection
-        flat_contexts = head_contexts.reshape(Q.size(0), self.dim)  # (n_query, dim)
-        fusion_context = self.W_o(flat_contexts)
+        # Concat
+        contexts = head_contexts.reshape(Q.size(0), self.dim)  # (n_query, dim)
+
+        # Linear projection if multi-head attn
+        if self.n_heads != 1:
+            contexts = self.W_o(contexts)
 
         # Pre-normalization
-        fusion_context = self.layer_norm(fusion_context)
-        fusion_context += Q
+        if layernorm is not False:
+            contexts = self.layer_norm(contexts)
+
+        # Residual connection
+        if residual is not False:
+            contexts += Q
 
         return fusion_context
 
