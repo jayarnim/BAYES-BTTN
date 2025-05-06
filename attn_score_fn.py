@@ -1,7 +1,6 @@
 from typing import Literal
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 
 
 class Module(nn.Module):
@@ -27,7 +26,7 @@ class Module(nn.Module):
         if self.fn_type=='dot':
             return self._scaled_dot_product_fn(Q, K)
         elif self.fn_type=='bilinear':
-            return self._bilinear_fn(Q, K)
+            return self._scaled_bilinear_fn(Q, K)
         elif self.fn_type=='concat':
             return self._concat_fn(Q, K)
         elif self.fn_type=='additive':
@@ -44,7 +43,7 @@ class Module(nn.Module):
         scores = (Q.expand_as(K) * K).sum(dim=-1) / (self.head_dim ** 0.5)
         return scores
 
-    def _bilinear_fn(self, Q, K):
+    def _scaled_bilinear_fn(self, Q, K):
         """
         Effective Approaches to Attention-based NMT
         Luong et al., 2015
@@ -53,7 +52,7 @@ class Module(nn.Module):
         # K_proj: (B, H, K, D)
         K_proj = torch.einsum('bhkd,hde->bhke', K, self.W_h)
         # scores: (B, H, K)
-        scores = (Q.expand_as(K) * K_proj).sum(dim=-1)
+        scores = (Q.expand_as(K) * K_proj).sum(dim=-1) / (self.head_dim ** 0.5)
         return scores
 
     def _concat_fn(self, Q, K):
@@ -74,7 +73,7 @@ class Module(nn.Module):
         hidden = torch.relu(QK_cat_proj + self.bias)
         # W_o: (H, D, 1)
         # scores: (B, H, K)
-        scores = torch.einsum('bhkd,hd1->bhk', hidden, self.W_o)
+        scores = torch.einsum('bhkd,hde->bhk', hidden, self.W_o)
         return scores
 
     def _additive_fn(self, Q, K):
