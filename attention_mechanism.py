@@ -70,7 +70,7 @@ class Module(nn.Module):
         if residual is not False:
             contexts += Q
 
-        return fusion_context
+        return contexts
 
     def _match_dim(self, source, target):
         while source.ndim < target.ndim:
