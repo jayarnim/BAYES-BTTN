@@ -92,7 +92,7 @@ class Module(nn.Module):
         hidden = torch.relu(QK_hadamard_proj + self.bias)
         # W_o: (H, D, 1)
         # scores: (B, H, K)
-        scores = torch.einsum('bhkd,hd1->bhk', hidden, self.W_o)
+        scores = torch.einsum('bhkd,hde->bhk', hidden, self.W_o)
         return scores
 
     def _init_layers(self):
