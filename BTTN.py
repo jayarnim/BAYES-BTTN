@@ -30,18 +30,22 @@ class Module(nn.Module):
         self._init_layers()
 
     def forward(self, Q, K, V, padding=None, mask=None):
+        # Projection
         Q_proj = self.W_q(Q).view(Q.size(0), self.n_heads, self.head_dim).unsqueeze(2)  # (n_query, n_heads, 1, head_dim)
         K_proj = self.W_k(K).view(K.size(0), K.size(1), self.n_heads, self.head_dim).transpose(1, 2)  # (n_query, n_heads, n_key, head_dim)
         V_proj = self.W_v(V).view(V.size(0), V.size(1), self.n_heads, self.head_dim).transpose(1, 2)  # (n_query, n_heads, n_key, head_dim)
 
+        # Sampling attn score
         samples, params = self._sampling_from_approx(Q_proj, K_proj, padding)
 
+        # Masking
         if padding is not None:
             samples = torch.masked_fill(samples, self._match_dim(padding, samples), float('-inf'))
 
         if mask is not None:
             samples = torch.masked_fill(samples, self._match_dim(mask, samples), float('-inf'))
 
+        # Compute context vector for each head
         weights = self._simplex_projection_fn(samples)  # (n_query, n_heads, n_key)
         head_contexts = torch.einsum('bhk,bhkd->bhd', weights, V_proj)  # (n_query, n_heads, head_dim)
 
