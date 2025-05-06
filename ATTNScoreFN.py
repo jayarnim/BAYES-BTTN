@@ -24,7 +24,7 @@ class Module(nn.Module):
     def forward(self, Q, K):
         # Q: (B, H, 1, D)
         # K: (B, H, K, D)
-        if self.fn_type=='scaled_dot_product':
+        if self.fn_type=='dot':
             return self._scaled_dot_product_fn(Q, K)
         elif self.fn_type=='bilinear':
             return self._bilinear_fn(Q, K)
