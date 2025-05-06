@@ -8,7 +8,7 @@ class Module(nn.Module):
         self,
         dim: int,
         n_heads: int, 
-        fn_type: Literal['dot', 'bilinear', 'concat', 'additive']='dot',
+        score_type: Literal['dot', 'bilinear', 'concat', 'hadamard']='dot',
     ):
         super().__init__()
         assert dim % n_heads == 0, "dim must be divisible by n_heads"
@@ -16,23 +16,23 @@ class Module(nn.Module):
         self.dim = dim
         self.n_heads = n_heads
         self.head_dim = dim // n_heads
-        self.fn_type = fn_type
+        self.score_type = score_type
 
         self._init_layers()
 
     def forward(self, Q, K):
         # Q: (B, H, 1, D)
         # K: (B, H, K, D)
-        if self.fn_type=='dot':
+        if self.score_type=='dot':
             return self._scaled_dot_product_fn(Q, K)
-        elif self.fn_type=='bilinear':
+        elif self.score_type=='bilinear':
             return self._scaled_bilinear_fn(Q, K)
-        elif self.fn_type=='concat':
+        elif self.score_type=='concat':
             return self._concat_fn(Q, K)
-        elif self.fn_type=='additive':
-            return self._additive_fn(Q, K)
+        elif self.score_type=='hadamard':
+            return self._hadamard_product_fn(Q, K)
         else:
-            raise ValueError("fn_type must be dot, bilinear, concat or additive")
+            raise ValueError("fn_type must be dot, bilinear, concat or hadamard")
 
     def _scaled_dot_product_fn(self, Q, K):
         """
@@ -76,7 +76,7 @@ class Module(nn.Module):
         scores = torch.einsum('bhkd,hde->bhk', hidden, self.W_o)
         return scores
 
-    def _additive_fn(self, Q, K):
+    def _hadamard_product_fn(self, Q, K):
         """
         NAIS: Neural Attentive Item Similarity Model for Recommendation
         He et al., 2018
