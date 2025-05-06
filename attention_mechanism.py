@@ -50,8 +50,10 @@ class Module(nn.Module):
         if mask is not None:
             scores = torch.masked_fill(scores, self._match_dim(mask, scores), float('-inf'))
 
-        # Compute context vector for each head
+        # Simplex projection
         weights = self.simplex_proj_fn(scores)  # (n_query, n_heads, n_key)
+
+        # Compute context vector for each head
         head_contexts = torch.einsum('bhk,bhkd->bhd', weights, V_proj)  # (n_query, n_heads, head_dim)
 
         # Concat and linear projection
