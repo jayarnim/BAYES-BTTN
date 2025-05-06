@@ -9,18 +9,18 @@ class Module(nn.Module):
         self,
         tau: float=3.0, 
         beta: float=0.25,
-        simplex_type: Literal['linear', 'exp']='linear',
+        simplex_fn_type: Literal['linear', 'exp']='linear',
     ):
         super().__init__()
 
         self.tau = tau
         self.beta = beta
-        self.simplex_type = simplex_type
+        self.simplex_fn_type = simplex_fn_type
 
     def forward(self, scores):
-        if self.simplex_type == "linear":
+        if self.simplex_fn_type == "linear":
             return self._linear_proj_fn(scores)
-        elif self.simplex_type == "exp":
+        elif self.simplex_fn_type == "exp":
             return self._exp_proj_fn(scores)
         else:
             raise ValueError("simplex type must be linear or exp")
