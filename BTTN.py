@@ -2,6 +2,7 @@ from typing import Literal
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from .ATTNScoreFN import Module as attn_score_fn
 
 
 class Module(nn.Module):
@@ -9,6 +10,7 @@ class Module(nn.Module):
         self,
         dim: int,
         n_heads: int, 
+        fn_type: Literal['dot', 'bilinear', 'concat', 'additive']='dot',
         simplex_type: Literal['linear', 'exp']='linear',
         sigma: float=0.25, 
         tau: float=2.0, 
@@ -21,11 +23,14 @@ class Module(nn.Module):
         self.dim = dim
         self.n_heads = n_heads
         self.head_dim = dim // n_heads
+        self.fn_type = fn_type
         self.simplex_type = simplex_type
         self.sigma = sigma
         self.tau = tau
         self.beta = beta
         self.dropout = dropout
+
+        self.attn_score_fn = attn_score_fn(dim, n_heads, fn_type)
 
         self._init_layers()
 
@@ -92,7 +97,7 @@ class Module(nn.Module):
 
     def _posterior(self, Q, K):
         sigma = torch.exp(0.5 * self.posterior_logvar)
-        phi = (Q.expand_as(K) * K).sum(dim=-1) / (self.head_dim ** 0.5)
+        phi = self.attn_score_fn(Q, K)
         mu = phi - 0.5 * (sigma ** 2)
         return mu, sigma
 
