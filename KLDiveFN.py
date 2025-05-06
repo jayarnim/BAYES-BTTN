@@ -51,11 +51,9 @@ class KLDivFN:
             num_valid = padding.numel() - padding.sum()
             kl = kl.masked_fill(padding, 0.0)
             kl_sum = kl.sum()
-            kl_mean = kl_sum / (num_valid + 1e-8)
+            return kl_sum / (num_valid + 1e-8)
         else:
-            kl_mean = kl.mean()
-        
-        return kl_mean
+            return kl.mean()
 
     def _free_bits_trick(self, kl_naive):
         return torch.max(
