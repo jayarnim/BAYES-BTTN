@@ -9,10 +9,9 @@ class Module(nn.Module):
         self,
         dim: int,
         n_heads: int, 
-        simplex_type: Literal['linear', 'exp']='linear',
-        sigma: float=0.25, 
-        tau: float=2.0, 
-        beta: float=0.25,
+        simplex_type: Literal['linear', 'exp']='exp',
+        tau: float=0.5, 
+        beta: float=0.5,
         dropout: float=0.2,
     ):
         super().__init__()
@@ -22,7 +21,6 @@ class Module(nn.Module):
         self.n_heads = n_heads
         self.head_dim = dim // n_heads
         self.simplex_type = simplex_type
-        self.sigma = sigma
         self.tau = tau
         self.beta = beta
         self.dropout = dropout
