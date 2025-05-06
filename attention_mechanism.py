@@ -3,6 +3,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from .attn_score_fn import Module as ATTNScoreFN
+from .simplex_proj_fn import Module as simplex_proj_fn
 
 
 class Module(nn.Module):
@@ -10,7 +11,7 @@ class Module(nn.Module):
         self,
         dim: int,
         n_heads: int, 
-        fn_type: Literal['dot', 'bilinear', 'concat', 'additive']='dot',
+        fn_type: Literal['dot', 'bilinear', 'concat', 'hadamard']='dot',
         simplex_type: Literal['linear', 'exp']='exp',
         tau: float=0.5, 
         beta: float=0.5,
@@ -29,7 +30,8 @@ class Module(nn.Module):
         self.dropout = dropout
 
         self.attn_score_fn = ATTNScoreFN(dim, n_heads, fn_type)
-        
+        self.simplex_proj_fn = simplex_proj_fn(tau, beta, simplex_type)
+
         self._init_layers()
 
     def forward(self, Q, K, V, padding=None, mask=None):
@@ -49,7 +51,7 @@ class Module(nn.Module):
             scores = torch.masked_fill(scores, self._match_dim(mask, scores), float('-inf'))
 
         # Compute context vector for each head
-        weights = self._simplex_projection_fn(scores)  # (n_query, n_heads, n_key)
+        weights = self.simplex_proj_fn(scores)  # (n_query, n_heads, n_key)
         head_contexts = torch.einsum('bhk,bhkd->bhd', weights, V_proj)  # (n_query, n_heads, head_dim)
 
         # Concat and linear projection
@@ -61,26 +63,6 @@ class Module(nn.Module):
         fusion_context += Q
 
         return fusion_context
-
-    def _simplex_projection_fn(self, scores):
-        if self.simplex_type == "linear":
-            return self._smoothed_linear_projection_fn(scores)
-        elif self.simplex_type == "exp":
-            return self._smoothed_exp_projection_fn(scores)
-        else:
-            raise ValueError("simplex type must be linear or exp")
-
-    def _smoothed_linear_projection_fn(self, scores):
-        numerator = F.relu(scores) ** self.tau
-        numerator_sum = numerator.sum(dim=-1, keepdim=True) + 1e-8
-        denominator = numerator_sum ** self.beta
-        return numerator / denominator
-
-    def _smoothed_exp_projection_fn(self, scores):
-        numerator = torch.exp(scores / self.tau)
-        numerator_sum = numerator.sum(dim=-1, keepdim=True)
-        denominator = numerator_sum ** self.beta
-        return numerator / denominator
 
     def _match_dim(self, source, target):
         while source.ndim < target.ndim:
