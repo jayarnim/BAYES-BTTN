@@ -2,7 +2,7 @@ from typing import Literal
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from .attn_score_fn import Module as ATTNScoreFN
+from .attn_score_fn import Module as attn_score_fn
 from .simplex_proj_fn import Module as simplex_proj_fn
 
 
@@ -29,12 +29,21 @@ class Module(nn.Module):
         self.beta = beta
         self.dropout = dropout
 
-        self.attn_score_fn = ATTNScoreFN(dim, n_heads, score_type)
+        self.attn_score_fn = attn_score_fn(dim, n_heads, score_type)
         self.simplex_proj_fn = simplex_proj_fn(tau, beta, simplex_type)
 
         self._init_layers()
 
-    def forward(self, Q, K, V, padding=None, mask=None, layernorm=False, residual=False):
+    def forward(
+        self, 
+        Q: torch.Tensor, 
+        K: torch.Tensor, 
+        V: torch.Tensor, 
+        padding: torch.Tensor=None, 
+        mask: torch.Tensor=None, 
+        layernorm: bool=False, 
+        residual: bool=False,
+    ):
         # Projection
         Q_proj = self.W_q(Q).view(Q.size(0), self.n_heads, self.head_dim).unsqueeze(2)  # (n_query, n_heads, 1, head_dim)
         K_proj = self.W_k(K).view(K.size(0), K.size(1), self.n_heads, self.head_dim).transpose(1, 2)  # (n_query, n_heads, n_key, head_dim)
