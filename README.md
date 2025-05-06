@@ -11,7 +11,7 @@
 
   - $h(\cdot)$ is Linear fn
 
-- **posterior of $\alpha \sim \text{Log-Normal}(\phi - \frac{\sigma^{2}}{2},\sigma^{2})$**
+- **posterior of $\alpha \sim \text{Log-Normal}(\phi - \frac{\sigma^{2}}{2},\sigma^{2})$** [`code`](https://github.com/jayarnim/BAYES-BTTN/blob/main/attn_score_fn.py)
     - scaled dot product fn: $\phi = q \cdot k / \sqrt{d}$
     
     - scaled bilinear fn: $\phi = q \cdot W_{h} \cdot k / \sqrt{d}$
@@ -20,7 +20,7 @@
     
     - additive fn: $\phi = w_{o} \cdot \text{relu}(W_{h} \cdot [q \odot k] + b)$
 
-- **simplex projection fn**
+- **simplex projection fn** [`code`](https://github.com/jayarnim/BAYES-BTTN/blob/main/simplex_proj_fn.py)
     - smoothed linear projection fn: $\omega=\alpha^{\tau} \Bigg/ \left[\sum{\alpha^{\tau}}\right]^{\beta}$
     
     - smoothed exp projection fn: $\omega={\displaystyle\frac{\exp{\alpha}}{\tau}} / {\left[\displaystyle\sum{\frac{\exp{\alpha}}{\tau}}\right]^{\beta}}$
@@ -29,7 +29,7 @@
         - $\tau$ : sharpening factor
         - $\beta$ : smoothing factor
 
-- **$-ELBO = NLL + KL(Q \parallel \Pi)$**
+- **$-ELBO = NLL + KL(Q \parallel \Pi)$** [`code`](https://github.com/jayarnim/BAYES-BTTN/blob/main/kl_div_fn.py)
     - $KL(Q \parallel \Pi) = \log{\displaystyle\frac{\sigma_{\Pi}}{\sigma_{Q}}} + \displaystyle\frac{\sigma_{Q}^{2} + (\mu_{Q}-\mu_{\Pi})^{2}}{2\sigma_{\Pi}^{2}} - \displaystyle\frac{1}{2}$ (s.t. Log-Normal Dist.)
 
 </br>
