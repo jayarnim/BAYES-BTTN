@@ -2,7 +2,7 @@ from typing import Literal
 import torch
 
 
-class KLDivFN:
+class Module:
     def __init__(
         self, 
         lower_bound: float=1.0,
