@@ -1,8 +1,8 @@
-from typing import Literal
+from typing import Literal, Optional
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
-from .attn_score_fn import Module as ATTNScoreFN
+from .attn_score_fn import Module as attn_score_fn
+from .simplex_proj_fn import Module as simplex_proj_fn
 
 
 class Module(nn.Module):
@@ -10,10 +10,10 @@ class Module(nn.Module):
         self,
         dim: int,
         n_heads: int, 
-        fn_type: Literal['dot', 'bilinear', 'concat', 'additive']='dot',
+        score_type: Literal['dot', 'bilinear', 'concat', 'hadamard']='dot',
         simplex_type: Literal['linear', 'exp']='linear',
         sigma: float=0.25, 
-        tau: float=2.0, 
+        tau: float=3.0, 
         beta: float=0.25,
         dropout: float=0.2,
     ):
@@ -23,18 +23,28 @@ class Module(nn.Module):
         self.dim = dim
         self.n_heads = n_heads
         self.head_dim = dim // n_heads
-        self.fn_type = fn_type
+        self.score_type = score_type
         self.simplex_type = simplex_type
         self.sigma = sigma
         self.tau = tau
         self.beta = beta
         self.dropout = dropout
 
-        self.attn_score_fn = ATTNScoreFN(dim, n_heads, fn_type)
+        self.attn_score_fn = attn_score_fn(dim, n_heads, score_type)
+        self.simplex_proj_fn = simplex_proj_fn(tau, beta, simplex_type)
 
         self._init_layers()
 
-    def forward(self, Q, K, V, padding=None, mask=None):
+    def forward(
+        self, 
+        Q: torch.Tensor, 
+        K: torch.Tensor, 
+        V: torch.Tensor, 
+        padding: Optional[torch.Tensor]=None, 
+        mask: Optional[torch.Tensor]=None, 
+        layernorm: bool=False, 
+        residual: bool=False,
+    ):
         # Projection
         Q_proj = self.W_q(Q).view(Q.size(0), self.n_heads, self.head_dim).unsqueeze(2)  # (n_query, n_heads, 1, head_dim)
         K_proj = self.W_k(K).view(K.size(0), K.size(1), self.n_heads, self.head_dim).transpose(1, 2)  # (n_query, n_heads, n_key, head_dim)
@@ -46,23 +56,31 @@ class Module(nn.Module):
         # Masking
         if padding is not None:
             samples = torch.masked_fill(samples, self._match_dim(padding, samples), float('-inf'))
-
         if mask is not None:
             samples = torch.masked_fill(samples, self._match_dim(mask, samples), float('-inf'))
 
+        # Simplex projection
+        weights = self.simplex_proj_fn(samples)  # (n_query, n_heads, n_key)
+
         # Compute context vector for each head
-        weights = self._simplex_projection_fn(samples)  # (n_query, n_heads, n_key)
         head_contexts = torch.einsum('bhk,bhkd->bhd', weights, V_proj)  # (n_query, n_heads, head_dim)
 
-        # Concat and linear projection
-        flat_contexts = head_contexts.reshape(Q.size(0), self.dim)  # (n_query, dim)
-        fusion_context = self.W_o(flat_contexts)
+        # Concat
+        contexts = head_contexts.reshape(Q.size(0), self.dim)  # (n_query, dim)
+
+        # Linear projection if multi-head attn
+        if self.n_heads != 1:
+            contexts = self.W_o(contexts)
 
         # Pre-normalization
-        fusion_context = self.layer_norm(fusion_context)
-        fusion_context += Q
+        if layernorm is not False:
+            contexts = self.layer_norm(contexts)
 
-        return fusion_context, params
+        # Residual connection
+        if residual is not False:
+            contexts += Q
+
+        return contexts, params
 
     def _sampling_from_approx(self, Q, K, padding):
         prior_mu, prior_sigma = self._prior(K)
@@ -81,14 +99,6 @@ class Module(nn.Module):
 
         return samples, params
 
-    def _simplex_projection_fn(self, samples):
-        if self.simplex_type == "linear":
-            return self._smoothed_linear_projection_fn(samples)
-        elif self.simplex_type == "exp":
-            return self._smoothed_exp_projection_fn(samples)
-        else:
-            raise ValueError("simplex type must be linear or exp")
-
     def _prior(self, K):
         sigma = torch.exp(0.5 * self.prior_logvar)
         phi = self.prior_phi(K).squeeze(-1)
@@ -100,18 +110,6 @@ class Module(nn.Module):
         phi = self.attn_score_fn(Q, K)
         mu = phi - 0.5 * (sigma ** 2)
         return mu, sigma
-
-    def _smoothed_linear_projection_fn(self, samples):
-        numerator = F.relu(samples) ** self.tau
-        numerator_sum = numerator.sum(dim=-1, keepdim=True) + 1e-8
-        denominator = numerator_sum ** self.beta
-        return numerator / denominator
-
-    def _smoothed_exp_projection_fn(self, samples):
-        numerator = torch.exp(samples / self.tau)
-        numerator_sum = numerator.sum(dim=-1, keepdim=True)
-        denominator = numerator_sum ** self.beta
-        return numerator / denominator
 
     def _match_dim(self, source, target):
         while source.ndim < target.ndim:
