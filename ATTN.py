@@ -2,6 +2,7 @@ from typing import Literal
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from .ATTNScoreFN import Module as attn_score_fn
 
 
 class Module(nn.Module):
@@ -9,6 +10,7 @@ class Module(nn.Module):
         self,
         dim: int,
         n_heads: int, 
+        fn_type: Literal['dot', 'bilinear', 'concat', 'additive']='dot',
         simplex_type: Literal['linear', 'exp']='exp',
         tau: float=0.5, 
         beta: float=0.5,
@@ -20,11 +22,14 @@ class Module(nn.Module):
         self.dim = dim
         self.n_heads = n_heads
         self.head_dim = dim // n_heads
+        self.fn_type = fn_type
         self.simplex_type = simplex_type
         self.tau = tau
         self.beta = beta
         self.dropout = dropout
 
+        self.attn_score_fn = attn_score_fn(dim, n_heads, fn_type)
+        
         self._init_layers()
 
     def forward(self, Q, K, V, padding=None, mask=None):
@@ -33,8 +38,8 @@ class Module(nn.Module):
         K_proj = self.W_k(K).view(K.size(0), K.size(1), self.n_heads, self.head_dim).transpose(1, 2)  # (n_query, n_heads, n_key, head_dim)
         V_proj = self.W_v(V).view(V.size(0), V.size(1), self.n_heads, self.head_dim).transpose(1, 2)  # (n_query, n_heads, n_key, head_dim)
 
-        # Sampling attn score
-        scores = self._scale_dot_product(Q_proj, K_proj, padding)
+        # ATTN scores
+        scores = self.attn_score_fn(Q_proj, K_proj)
 
         # Masking
         if padding is not None:
@@ -56,10 +61,6 @@ class Module(nn.Module):
         fusion_context += Q
 
         return fusion_context
-
-    def _scale_dot_product(self, Q, K, padding):
-        scores = (Q.expand_as(K) * K).sum(dim=-1) / (self.head_dim ** 0.5)
-        return scores
 
     def _simplex_projection_fn(self, scores):
         if self.simplex_type == "linear":
