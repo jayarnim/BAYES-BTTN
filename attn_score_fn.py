@@ -96,7 +96,8 @@ class Module(nn.Module):
         return scores
 
     def _init_layers(self):
-        self.W_h = nn.Parameter(torch.randn(self.n_heads, self.head_dim, self.head_dim))
-        self.W_c = nn.Parameter(torch.randn(self.n_heads, self.head_dim * 2, self.head_dim))
-        self.W_o = nn.Parameter(torch.randn(self.n_heads, self.head_dim, 1))
+        std = 1.0 / (self.head_dim ** 0.5)
+        self.W_h = nn.Parameter(torch.empty(self.n_heads, self.head_dim, self.head_dim).normal_(mean=0, std=std))
+        self.W_c = nn.Parameter(torch.empty(self.n_heads, self.head_dim * 2, self.head_dim).normal_(mean=0, std=std))
+        self.W_o = nn.Parameter(torch.empty(self.n_heads, self.head_dim, 1).normal_(mean=0, std=std))
         self.bias = nn.Parameter(torch.zeros(self.n_heads, 1, self.head_dim))
