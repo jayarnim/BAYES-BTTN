@@ -8,7 +8,7 @@ class Module(nn.Module):
         self,
         dim: int,
         n_heads: int, 
-        score_type: Literal['dot', 'bilinear', 'concat', 'hadamard']='dot',
+        score_fn_type: Literal['dot', 'bilinear', 'concat', 'hadamard']='dot',
     ):
         super().__init__()
         assert dim % n_heads == 0, "dim must be divisible by n_heads"
@@ -16,20 +16,20 @@ class Module(nn.Module):
         self.dim = dim
         self.n_heads = n_heads
         self.head_dim = dim // n_heads
-        self.score_type = score_type
+        self.score_fn_type = score_fn_type
 
         self._init_layers()
 
     def forward(self, Q, K):
         # Q: (B, H, 1, D)
         # K: (B, H, K, D)
-        if self.score_type=='dot':
+        if self.score_fn_type=='dot':
             return self._scaled_dot_product_fn(Q, K)
-        elif self.score_type=='bilinear':
+        elif self.score_fn_type=='bilinear':
             return self._scaled_bilinear_fn(Q, K)
-        elif self.score_type=='concat':
+        elif self.score_fn_type=='concat':
             return self._concat_fn(Q, K)
-        elif self.score_type=='hadamard':
+        elif self.score_fn_type=='hadamard':
             return self._hadamard_product_fn(Q, K)
         else:
             raise ValueError("fn_type must be dot, bilinear, concat or hadamard")
