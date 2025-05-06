@@ -10,8 +10,8 @@ class Module(nn.Module):
         self,
         dim: int,
         n_heads: int, 
-        score_type: Literal['dot', 'bilinear', 'concat', 'hadamard']='dot',
-        simplex_type: Literal['linear', 'exp']='linear',
+        score_fn_type: Literal['dot', 'bilinear', 'concat', 'hadamard']='dot',
+        simplex_fn_type: Literal['linear', 'exp']='linear',
         sigma: float=0.25, 
         tau: float=3.0, 
         beta: float=0.25,
@@ -23,15 +23,15 @@ class Module(nn.Module):
         self.dim = dim
         self.n_heads = n_heads
         self.head_dim = dim // n_heads
-        self.score_type = score_type
-        self.simplex_type = simplex_type
+        self.score_fn_type = score_fn_type
+        self.simplex_fn_type = simplex_fn_type
         self.sigma = sigma
         self.tau = tau
         self.beta = beta
         self.dropout = dropout
 
-        self.attn_score_fn = attn_score_fn(dim, n_heads, score_type)
-        self.simplex_proj_fn = simplex_proj_fn(tau, beta, simplex_type)
+        self.attn_score_fn = attn_score_fn(dim, n_heads, score_fn_type)
+        self.simplex_proj_fn = simplex_proj_fn(tau, beta, simplex_fn_type)
 
         self._init_layers()
 
