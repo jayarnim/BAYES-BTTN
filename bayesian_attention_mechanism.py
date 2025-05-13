@@ -1,6 +1,7 @@
 from typing import Literal, Optional
 import torch
 import torch.nn as nn
+from torch.distributions import LogNormal
 from .attn_score_fn import Module as attn_score_fn
 from .simplex_proj_fn import Module as simplex_proj_fn
 
@@ -51,13 +52,21 @@ class Module(nn.Module):
         V_proj = self.W_v(V).view(V.size(0), V.size(1), self.n_heads, self.head_dim).transpose(1, 2)  # (n_query, n_heads, n_key, head_dim)
 
         # Sampling attn score
-        samples, params = self._sampling_from_approx(Q_proj, K_proj, padding)
+        samples, dist = self._sampling_from_approx(Q_proj, K_proj, padding)
 
         # Masking
         if padding is not None:
-            samples = torch.masked_fill(samples, self._match_dim(padding, samples), float('-inf'))
+            samples = torch.masked_fill(
+                input=samples, 
+                mask=self._match_dim(padding, samples), 
+                value=float('-inf'),
+            )
         if mask is not None:
-            samples = torch.masked_fill(samples, self._match_dim(mask, samples), float('-inf'))
+            samples = torch.masked_fill(
+                input=samples, 
+                mask=self._match_dim(mask, samples), 
+                value=float('-inf'),
+            )
 
         # Simplex projection
         weights = self.simplex_proj_fn(samples)  # (n_query, n_heads, n_key)
@@ -80,36 +89,34 @@ class Module(nn.Module):
         if residual is not False:
             contexts += Q
 
-        return contexts, params
+        return contexts, dist
 
     def _sampling_from_approx(self, Q, K, padding):
-        prior_mu, prior_sigma = self._prior(K)
-        posterior_mu, posterior_sigma = self._posterior(Q, K)
+        prior = self._prior(K)
+        posterior = self._posterior(Q, K)
+        samples = posterior.rsample()
 
-        eps = torch.randn_like(posterior_mu)
-        samples = torch.exp(posterior_mu + posterior_sigma * eps)
-
-        params = dict(
-            prior_mu=prior_mu,
-            prior_sigma=prior_sigma,
-            posterior_mu=posterior_mu,
-            posterior_sigma=posterior_sigma,
-            padding=self._match_dim(padding, posterior_mu),
+        dist = dict(
+            prior=prior,
+            posterior=posterior,
+            padding=self._match_dim(padding, samples),
         )
 
-        return samples, params
+        return samples, dist
 
     def _prior(self, K):
         sigma = torch.exp(0.5 * self.prior_logvar)
         phi = self.prior_phi(K).squeeze(-1)
         mu = phi - 0.5 * (sigma ** 2)
-        return mu, sigma
+        dist = LogNormal(mu, sigma)
+        return dist
 
     def _posterior(self, Q, K):
         sigma = torch.exp(0.5 * self.posterior_logvar)
         phi = self.attn_score_fn(Q, K)
         mu = phi - 0.5 * (sigma ** 2)
-        return mu, sigma
+        dist = LogNormal(mu, sigma)
+        return dist
 
     def _match_dim(self, source, target):
         while source.ndim < target.ndim:
