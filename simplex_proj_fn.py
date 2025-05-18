@@ -4,12 +4,15 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 
+SimplexFNType = Literal['linear', 'exp']
+
+
 class Module(nn.Module):
     def __init__(
         self,
         tau: float=3.0, 
         beta: float=0.25,
-        simplex_fn_type: Literal['linear', 'exp']='linear',
+        simplex_fn_type: SimplexFNType='linear',
     ):
         super().__init__()
 
