@@ -3,12 +3,15 @@ import torch
 import torch.nn as nn
 
 
+ScoreFNType = Literal['dot', 'bilinear', 'concat', 'hadamard']
+
+
 class Module(nn.Module):
     def __init__(
         self,
         dim: int,
         n_heads: int, 
-        score_fn_type: Literal['dot', 'bilinear', 'concat', 'hadamard']='dot',
+        score_fn_type: ScoreFNType='dot',
     ):
         super().__init__()
         assert dim % n_heads == 0, "dim must be divisible by n_heads"
