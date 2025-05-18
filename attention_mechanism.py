@@ -6,13 +6,17 @@ from .attn_score_fn import Module as attn_score_fn
 from .simplex_proj_fn import Module as simplex_proj_fn
 
 
+ScoreFNType = Literal['dot', 'bilinear', 'concat', 'hadamard']
+SimplexFNType = Literal['linear', 'exp']
+
+
 class Module(nn.Module):
     def __init__(
         self,
         dim: int,
         n_heads: int, 
-        score_fn_type: Literal['dot', 'bilinear', 'concat', 'hadamard']='dot',
-        simplex_fn_type: Literal['linear', 'exp']='exp',
+        score_fn_type: ScoreFNType='dot',
+        simplex_fn_type: SimplexFNType='exp',
         tau: float=0.5, 
         beta: float=0.5,
         dropout: float=0.2,
