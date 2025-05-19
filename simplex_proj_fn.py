@@ -8,7 +8,7 @@ from .constants import SimplexFNType
 class Module(nn.Module):
     def __init__(
         self,
-        tau: float=3.0, 
+        tau: float=4.0, 
         beta: float=0.25,
         simplex_fn_type: SimplexFNType='linear',
     ):
