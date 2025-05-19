@@ -1,13 +1,16 @@
-from typing import Literal, Optional
+from typing import Optional
 import torch
 import torch.nn as nn
-from torch.distributions import LogNormal
-from .attn_score_fn import Module as attn_score_fn
+from .sampler import (
+    LognormalSampler,
+    WeibullSampler,
+)
 from .simplex_proj_fn import Module as simplex_proj_fn
-
-
-ScoreFNType = Literal['dot', 'bilinear', 'concat', 'hadamard']
-SimplexFNType = Literal['linear', 'exp']
+from .constants import (
+    SamplerType,
+    ScoreFNType,
+    SimplexFNType,
+)
 
 
 class Module(nn.Module):
@@ -15,10 +18,12 @@ class Module(nn.Module):
         self,
         dim: int,
         n_heads: int, 
+        sampler_type: SamplerType='lognormal',
         score_fn_type: ScoreFNType='dot',
         simplex_fn_type: SimplexFNType='linear',
-        sigma: float=0.25, 
-        tau: float=3.0, 
+        prior_phi: float=1.0,
+        posterior_phi: float=1.0,
+        tau: float=4.0, 
         beta: float=0.25,
         dropout: float=0.2,
     ):
@@ -28,15 +33,14 @@ class Module(nn.Module):
         self.dim = dim
         self.n_heads = n_heads
         self.head_dim = dim // n_heads
+        self.sampler_type = sampler_type
         self.score_fn_type = score_fn_type
         self.simplex_fn_type = simplex_fn_type
-        self.sigma = sigma
+        self.prior_phi = prior_phi
+        self.posterior_phi = posterior_phi
         self.tau = tau
         self.beta = beta
         self.dropout = dropout
-
-        self.attn_score_fn = attn_score_fn(dim, n_heads, score_fn_type)
-        self.simplex_proj_fn = simplex_proj_fn(tau, beta, simplex_fn_type)
 
         self._init_layers()
 
@@ -47,8 +51,6 @@ class Module(nn.Module):
         V: torch.Tensor, 
         padding: Optional[torch.Tensor]=None, 
         mask: Optional[torch.Tensor]=None, 
-        layernorm: bool=False, 
-        residual: bool=False,
     ):
         # Projection
         Q_proj = self.W_q(Q).view(Q.size(0), self.n_heads, self.head_dim).unsqueeze(2)  # (n_query, n_heads, 1, head_dim)
@@ -56,7 +58,7 @@ class Module(nn.Module):
         V_proj = self.W_v(V).view(V.size(0), V.size(1), self.n_heads, self.head_dim).transpose(1, 2)  # (n_query, n_heads, n_key, head_dim)
 
         # Sampling attn score
-        samples, dist = self._sampling_from_approx(Q_proj, K_proj, padding)
+        samples, dist = self.sampler(Q_proj, K_proj, padding)
 
         # Masking
         if padding is not None:
@@ -86,66 +88,44 @@ class Module(nn.Module):
             contexts = self.W_o(contexts)
 
         # Pre-normalization
-        if layernorm is not False:
-            contexts = self.layer_norm(contexts)
+        contexts = self.layer_norm(contexts)
 
         # Residual connection
-        if residual is not False:
-            contexts += Q
+        contexts += Q
 
         return contexts, dist
 
-    def _sampling_from_approx(self, Q, K, padding):
-        prior = self._prior(K)
-        posterior = self._posterior(Q, K)
-        samples = posterior.rsample()
-
-        dist = dict(
-            prior=prior,
-            posterior=posterior,
-            padding=self._match_dim(padding, samples),
-        )
-
-        return samples, dist
-
-    def _prior(self, K):
-        sigma = torch.exp(0.5 * self.prior_logvar)
-        phi = self.prior_phi(K).squeeze(-1)
-        mu = phi - 0.5 * (sigma ** 2)
-        dist = LogNormal(mu, sigma)
-        return dist
-
-    def _posterior(self, Q, K):
-        sigma = torch.exp(0.5 * self.posterior_logvar)
-        phi = self.attn_score_fn(Q, K)
-        mu = phi - 0.5 * (sigma ** 2)
-        dist = LogNormal(mu, sigma)
-        return dist
-
     def _match_dim(self, source, target):
-        while source.ndim < target.ndim:
-            source = source.unsqueeze(1)
+        if source is not None:
+            while source.ndim < target.ndim:
+                source = source.unsqueeze(1)
         return source
 
     def _init_layers(self):
+        kwargs = dict(
+            dim=self.dim, 
+            n_heads=self.n_heads, 
+            score_fn_type=self.score_fn_type, 
+            prior_phi=self.prior_phi, 
+            posterior_phi=self.posterior_phi, 
+            dropout=self.dropout,
+        )
+        if self.sampler_type=='lognormal':
+            self.sampler = LognormalSampler(**kwargs)
+        elif self.sampler_type=='weibull':
+            self.sampler = WeibullSampler(**kwargs)
+        else:
+            raise ValueError("Invalid Approx. Dist.")
+
+        kwargs = dict(
+            tau=self.tau, 
+            beta=self.beta, 
+            simplex_fn_type=self.simplex_fn_type,
+        )
+        self.simplex_proj_fn = simplex_proj_fn(**kwargs)
+
         self.W_q = nn.Linear(self.dim, self.dim)
         self.W_k = nn.Linear(self.dim, self.dim)
         self.W_v = nn.Linear(self.dim, self.dim)
         self.W_o = nn.Linear(self.dim, self.dim)
         self.layer_norm = nn.LayerNorm(self.dim)
-
-        self.prior_phi = nn.Sequential(
-            nn.Linear(self.head_dim, self.head_dim),
-            nn.LayerNorm(self.head_dim),
-            nn.ReLU(),
-            nn.Dropout(self.dropout),
-            nn.Linear(self.head_dim, 1),
-        )
-        self.register_buffer(
-            name='prior_logvar', 
-            tensor=torch.tensor(2 * torch.log(torch.tensor(self.sigma))),
-        )
-        self.register_buffer(
-            name='posterior_logvar', 
-            tensor=torch.tensor(2 * torch.log(torch.tensor(self.sigma))),
-        )

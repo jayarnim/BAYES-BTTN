@@ -1,4 +1,3 @@
-from typing import Literal
 import numpy as np
 import torch
 from torch.distributions import kl_divergence

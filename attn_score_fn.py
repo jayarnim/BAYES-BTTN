@@ -1,9 +1,7 @@
 from typing import Literal
 import torch
 import torch.nn as nn
-
-
-ScoreFNType = Literal['dot', 'bilinear', 'concat', 'hadamard']
+from .constants import ScoreFNType
 
 
 class Module(nn.Module):
