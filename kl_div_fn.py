@@ -4,7 +4,7 @@ from torch.special import digamma
 from torch.distributions import kl_divergence
 
 
-class KLLossFN:
+class Module:
     def __init__(
         self,
         sampler_type: SamplerType='lognormal',
@@ -35,13 +35,14 @@ class KLLossFN:
         gamma_euler = -digamma(torch.tensor(1.0))
 
         kl = (
-            gamma_euler (1/k - gamma_euler)
-            + alpha / k 
-            - alpha * (torch.log(lambda_) + torch.log(beta))
+            (gamma_euler * alpha) / k
+            - alpha * torch.log(lambda_)
             + torch.log(k)
-            + beta * lambda_ * torch.exp(torch.lgamma(1 + 1 / k).exp().log())
-            + torch.lgamma(alpha)
+            + beta * lambda_ * torch.exp(torch.lgamma(1/k + 1))
+            - gamma_euler
             - 1
+            - alpha * torch.log(beta)
+            + torch.lgamma(alpha)
         )
 
         return kl
