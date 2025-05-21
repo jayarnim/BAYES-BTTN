@@ -1,29 +1,50 @@
-import numpy as np
+from .constants import SamplerType
 import torch
+from torch.special import digamma
 from torch.distributions import kl_divergence
 
 
-class Module:
+class KLLossFN:
     def __init__(
-        self, 
-        lower_bound: float=1.0,
+        self,
+        sampler_type: SamplerType='lognormal',
     ):
-        self.lower_bound = lower_bound
+        self.sampler_type = sampler_type
 
     def compute(self, prior, posterior, padding=None):
-        kl = kl_divergence(posterior, prior)
+        if self.sampler_type=='lognormal':
+            kl = self._lognormal(prior, posterior)
+        elif self.sampler_type=='weibull':
+            kl = self._weibull(prior, posterior)
+        else:
+            raise ValueError("Invalid Sampler Type")
+
         kl_mean = self._kl_mean(kl, padding)
 
-        if self.lower_bound is not None:
-            return kl_mean, self._free_bits_trick(kl_mean)
-        else:
-            return kl_mean
+        return kl_mean
 
-    def _free_bits_trick(self, kl_mean):
-        return torch.max(
-            kl_mean, 
-            torch.tensor(self.lower_bound)
+    def _lognormal(self, prior, posterior):
+        return kl_divergence(posterior, prior)
+
+    def _weibull(self, prior, posterior):
+        alpha = prior.concentration
+        beta = prior.rate
+        lambda_ = posterior.scale
+        k = posterior.concentration
+
+        gamma_euler = -digamma(torch.tensor(1.0))
+
+        kl = (
+            gamma_euler (1/k - gamma_euler)
+            + alpha / k 
+            - alpha * (torch.log(lambda_) + torch.log(beta))
+            + torch.log(k)
+            + beta * lambda_ * torch.exp(torch.lgamma(1 + 1 / k).exp().log())
+            + torch.lgamma(alpha)
+            - 1
         )
+
+        return kl
 
     def _kl_mean(self, kl, padding):
         # mean over non-padding positions
