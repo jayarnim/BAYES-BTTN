@@ -1,9 +1,13 @@
 from typing import Optional
 import torch
 import torch.nn as nn
-from .attn_score_fn import Module as attn_score_fn
+from .sampler import (
+    LognormalSampler,
+    WeibullSampler,
+)
 from .simplex_proj_fn import Module as simplex_proj_fn
 from .constants import (
+    SamplerType,
     ScoreFNType,
     SimplexFNType,
 )
@@ -14,9 +18,12 @@ class Module(nn.Module):
         self,
         dim: int,
         n_heads: int, 
+        sampler_type: SamplerType,
         score_fn_type: ScoreFNType='dot',
-        tau: float=0.5, 
-        beta: float=0.5,
+        prior_phi: float=1.0,
+        posterior_phi: float=1.0,
+        tau: float=4.0, 
+        beta: float=0.25,
         dropout: float=0.2,
     ):
         super().__init__()
@@ -25,7 +32,10 @@ class Module(nn.Module):
         self.dim = dim
         self.n_heads = n_heads
         self.head_dim = dim // n_heads
+        self.sampler_type = sampler_type
         self.score_fn_type = score_fn_type
+        self.prior_phi = prior_phi
+        self.posterior_phi = posterior_phi
         self.tau = tau
         self.beta = beta
         self.dropout = dropout
@@ -40,23 +50,23 @@ class Module(nn.Module):
         mask: Optional[torch.Tensor]=None, 
     ):
         # Projection
-        Q_proj = self.W_q(Q).view(Q.size(0), self.n_heads, self.head_dim).unsqueeze(2)  # (n_query, n_heads, 1, head_dim)
-        K_proj = self.W_k(K).view(K.size(0), K.size(1), self.n_heads, self.head_dim).transpose(1, 2)  # (n_query, n_heads, n_key, head_dim)
-        V_proj = self.W_v(V).view(V.size(0), V.size(1), self.n_heads, self.head_dim).transpose(1, 2)  # (n_query, n_heads, n_key, head_dim)
+        Q_proj = self.W_q(Q).view(Q.size(0), self.n_heads, self.head_dim).unsqueeze(2)                  # (n_query, n_heads, 1, head_dim)
+        K_proj = self.W_k(K).view(K.size(0), K.size(1), self.n_heads, self.head_dim).transpose(1, 2)    # (n_query, n_heads, n_key, head_dim)
+        V_proj = self.W_v(V).view(V.size(0), V.size(1), self.n_heads, self.head_dim).transpose(1, 2)    # (n_query, n_heads, n_key, head_dim)
 
-        # ATTN scores
-        scores = self.attn_score_fn(Q_proj, K_proj)
+        # Sampling attn score
+        samples, dist = self.sampler(Q_proj, K_proj, mask)
 
         # Masking
         if mask is not None:
-            scores = torch.masked_fill(
-                input=scores, 
-                mask=self._match_dim(mask, scores), 
+            samples = torch.masked_fill(
+                input=samples, 
+                mask=self._match_dim(mask, samples), 
                 value=float('-inf'),
             )
 
         # Simplex projection
-        weights = self.simplex_proj_fn(scores)  # (n_query, n_heads, n_key)
+        weights = self.simplex_proj_fn(samples)  # (n_query, n_heads, n_key)
 
         # Compute context vector for each head
         head_contexts = torch.einsum('bhk,bhkd->bhd', weights, V_proj)  # (n_query, n_heads, head_dim)
@@ -74,7 +84,7 @@ class Module(nn.Module):
         # Residual connection
         contexts += Q
 
-        return contexts
+        return contexts, dist
 
     def _match_dim(self, source, target):
         if source is not None:
@@ -86,14 +96,22 @@ class Module(nn.Module):
         kwargs = dict(
             dim=self.dim, 
             n_heads=self.n_heads, 
-            score_fn_type=self.score_fn_type,
+            score_fn_type=self.score_fn_type, 
+            prior_phi=self.prior_phi, 
+            posterior_phi=self.posterior_phi, 
+            dropout=self.dropout,
         )
-        self.attn_score_fn = attn_score_fn(**kwargs)
-        
+        if self.sampler_type=='lognormal':
+            self.sampler = LognormalSampler(**kwargs)
+        elif self.sampler_type=='weibull':
+            self.sampler = WeibullSampler(**kwargs)
+        else:
+            raise ValueError("Invalid Approx. Dist.")
+
         kwargs = dict(
             tau=self.tau, 
             beta=self.beta, 
-            simplex_fn_type='exp',
+            simplex_fn_type='linear',
         )
         self.simplex_proj_fn = simplex_proj_fn(**kwargs)
 

@@ -27,7 +27,7 @@ class LognormalSampler(nn.Module):
         
         self._init_layers()
 
-    def forward(self, Q, K, padding):
+    def forward(self, Q, K, mask):
         prior = self._prior(K)
         posterior = self._posterior(Q, K)
         samples = posterior.rsample()
@@ -35,7 +35,7 @@ class LognormalSampler(nn.Module):
         dist = dict(
             prior=prior,
             posterior=posterior,
-            padding=self._match_dim(padding, samples),
+            mask=self._match_dim(mask, samples),
         )
 
         return samples, dist
@@ -93,8 +93,8 @@ class WeibullSampler(nn.Module):
         dim: int,
         n_heads: int,
         score_fn_type: ScoreFNType='dot',
-        prior_phi: float=1.0, 
-        posterior_phi: float=1.0,
+        prior_phi: float=0.1, 
+        posterior_phi: float=10.0,
         dropout: float=0.2,
     ):
         super().__init__()
@@ -109,7 +109,7 @@ class WeibullSampler(nn.Module):
         
         self._init_layers()
 
-    def forward(self, Q, K, padding):
+    def forward(self, Q, K, mask):
         prior = self._prior(K)
         posterior = self._posterior(Q, K)
         samples = posterior.rsample()
@@ -117,7 +117,7 @@ class WeibullSampler(nn.Module):
         dist = dict(
             prior=prior,
             posterior=posterior,
-            padding=self._match_dim(padding, samples),
+            mask=self._match_dim(mask, samples),
         )
 
         return samples, dist

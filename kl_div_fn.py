@@ -11,7 +11,7 @@ class Module:
     ):
         self.sampler_type = sampler_type
 
-    def compute(self, prior, posterior, padding=None):
+    def compute(self, prior, posterior, mask=None):
         if self.sampler_type=='lognormal':
             kl = self._lognormal(prior, posterior)
         elif self.sampler_type=='weibull':
@@ -19,7 +19,7 @@ class Module:
         else:
             raise ValueError("Invalid Sampler Type")
 
-        kl_mean = self._kl_mean(kl, padding)
+        kl_mean = self._kl_mean(kl, mask)
 
         return kl_mean
 
@@ -47,12 +47,12 @@ class Module:
 
         return kl
 
-    def _kl_mean(self, kl, padding):
+    def _kl_mean(self, kl, mask):
         # mean over non-padding positions
-        if padding is not None:
-            padding = padding.to(kl.device)
-            num_valid = padding.numel() - padding.sum()
-            kl = kl.masked_fill(padding, 0.0)
+        if mask is not None:
+            mask = mask.to(kl.device)
+            num_valid = mask.numel() - mask.sum()
+            kl = kl.masked_fill(mask, 0.0)
             kl_sum = kl.sum()
             return kl_sum / (num_valid + 1e-8)
         
