@@ -15,7 +15,6 @@ class Module(nn.Module):
         dim: int,
         n_heads: int, 
         score_fn_type: ScoreFNType='dot',
-        simplex_fn_type: SimplexFNType='exp',
         tau: float=0.5, 
         beta: float=0.5,
         dropout: float=0.2,
@@ -27,7 +26,6 @@ class Module(nn.Module):
         self.n_heads = n_heads
         self.head_dim = dim // n_heads
         self.score_fn_type = score_fn_type
-        self.simplex_fn_type = simplex_fn_type
         self.tau = tau
         self.beta = beta
         self.dropout = dropout
@@ -39,7 +37,6 @@ class Module(nn.Module):
         Q: torch.Tensor, 
         K: torch.Tensor, 
         V: torch.Tensor, 
-        padding: Optional[torch.Tensor]=None, 
         mask: Optional[torch.Tensor]=None, 
     ):
         # Projection
@@ -51,16 +48,10 @@ class Module(nn.Module):
         scores = self.attn_score_fn(Q_proj, K_proj)
 
         # Masking
-        if padding is not None:
-            samples = torch.masked_fill(
-                input=samples, 
-                mask=self._match_dim(padding, samples), 
-                value=float('-inf'),
-            )
         if mask is not None:
-            samples = torch.masked_fill(
-                input=samples, 
-                mask=self._match_dim(mask, samples), 
+            scores = torch.masked_fill(
+                input=scores, 
+                mask=self._match_dim(mask, scores), 
                 value=float('-inf'),
             )
 
@@ -102,7 +93,7 @@ class Module(nn.Module):
         kwargs = dict(
             tau=self.tau, 
             beta=self.beta, 
-            simplex_fn_type=self.simplex_fn_type,
+            simplex_fn_type='exp',
         )
         self.simplex_proj_fn = simplex_proj_fn(**kwargs)
 
